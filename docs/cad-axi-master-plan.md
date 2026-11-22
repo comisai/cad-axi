@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Version 0.1.0 released to npm with signed provenance (2026-11-22): reading, measuring, creating and editing, with every write checked ([write matrix](write-matrix.md)). The Comis apps pack ships it since comisai/comis#4702 (merged 2026-11-22, decision D-new-159). The live gates wait for A2, the AUDIT check for A5, a keyed Comis run for A6. |
+| Status | Version 0.1.0 released to npm with signed provenance (2026-11-22): reading, measuring, creating and editing, with every write checked ([write matrix](write-matrix.md)). The Comis apps pack ships it since comisai/comis#4702 (merged 2026-11-22, decision D-new-159). Version 0.1.1 fixed a guessed size the first keyed Comis run found; the second run passed every case (comisai/comis#4718). The live gates wait for A2, the AUDIT check for A5. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) (tasks T1 to T50, test plan, CI) |
@@ -61,7 +61,7 @@ A milestone is done only when its gate passes. Every gate is a command or a proo
 | M5 | Read qualification | C | M4, A2 | The live gate passes L1 to L6 and L9; the skill dry run passes | Not started |
 | M6 | Release 0.1.0 | B | M5, A1 | `npm view cad-axi dist.attestations` names this repository; the live gate passes on the installed package | **Released 2026-11-22**; the live gate waits for A2 |
 | M7 | Comis decision and pack | D | M6, A3 | The decision record accepted; the pack builds and its doctor finds the exact version on x64 and arm64; the Comis merge gate passes | **Merged 2026-11-22** (comisai/comis#4702); the owner's acceptance of D-new-159 (A3) stands open |
-| M8 | Comis live test | D | M7, A6 | A scripted stage with the pack installed; a keyed scenario in which a real model answers the sample's questions with every length right | Not started |
+| M8 | Comis live test | D | M7, A6 | A scripted stage with the pack installed; a keyed scenario in which a real model answers the sample's questions with every length right | **Passed 2026-11-22** (comisai/comis#4718, record K4718): run 1 on 0.1.0 found a shared label sizing a run; run 2 on 0.1.1 passed all four cases. USD 0.38 of the USD 25 authorized |
 | M9 | Creating, 0.2.0 | B | M6, A5 | Every written fixture passes both independent readers; a person opens sample outputs with a clean AUDIT; the `drawing-edit` skill merged in Comis | Not started |
 | M10 | Editing, 0.3.0 | B, C | M9, A2, A5 | Zero lost entities across the write matrix; L7 and L8 pass on the owner's drawings | Not started |
 | M11 | The owner uses it | D | M8 | One real question about a DWG answered through the chief of staff on the owner's own install | Not started |
