@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Draft. No task started. T1 is this plan's own pull request. |
+| Status | T1 done: the repository and these plans (comisai/cad-axi#1, 2026-11-22). T2 is next. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Master plan | [`cad-axi-master-plan.md`](cad-axi-master-plan.md) (milestones, gates, owner actions) |
@@ -126,7 +126,7 @@ Rules:
 
 | Task | What | Done when |
 | --- | --- | --- |
-| T1 | Repository, licence, README, NOTICE, security policy, contributing guide, code of conduct, pull request template, design, this plan, master plan | Merged to `main` |
+| T1 | Repository, licence, README, NOTICE, security policy, contributing guide, code of conduct, pull request template, design, this plan, master plan | Merged to `main`: **done** (#1) |
 | T2 | Repository settings, with the first CI workflow: `main` needs a pull request and green checks; `v*` tags admin-only; an `npm` environment that deploys only from tags; Dependabot for npm, NuGet and GitHub Actions; issue templates; `CODEOWNERS` | A pull request without checks cannot merge; a non-admin cannot push a `v*` tag |
 
 ### M2: engine proof (design phase 0)
