@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Planning. The survey of open and closed DWG engines is done (2026-11-22). This repository and its plans are the first milestone. No code yet. |
+| Status | Planning. The survey of open and closed DWG engines is done, and this repository and its plans are merged (comisai/cad-axi#1, 2026-11-22). No code yet; T2, the repository settings and CI, is next. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) (tasks T1 to T50, test plan, CI) |
@@ -27,7 +27,7 @@ Updated 2026-11-22.
 | Area | Status | Evidence |
 | --- | --- | --- |
 | Survey of DWG engines | **Done** | Design §4: every open and closed engine compared on licence, versions, write fidelity, text, security and packaging |
-| Repository and plans | **This pull request** | `comisai/cad-axi` is public under MIT; design, implementation plan and master plan |
+| Repository and plans | **Done** | `comisai/cad-axi` is public under MIT; design, implementation plan and master plan merged in comisai/cad-axi#1 |
 | Repository settings and CI | Not started | T2 |
 | Engine proof | Not started | M2. A local probe during the survey built a NativeAOT linux-arm64 engine of about 9.6 MB that passed DWG and DXF round trips with Hebrew text; not repeated, not published |
 | Reading (0.1) | Not started | M3 to M6 |
@@ -53,7 +53,7 @@ A milestone is done only when its gate passes. Every gate is a command or a proo
 | ID | Milestone | Stream | Depends on | Exit gate | Status |
 | --- | --- | --- | --- | --- | --- |
 | M0 | Survey | — | — | Engines compared; a stack chosen with its reasons and its switch conditions | **Done 2026-11-22** |
-| M1 | Repository and plans | B | M0 | This pull request merged; T2 settings in place | **In progress** |
+| M1 | Repository and plans | B | M0 | The plans merged; T2 settings in place | **In progress**: plans merged 2026-11-22 (#1); T2 next |
 | M2 | Engine proof | B, C | M1, A2 for T10 | Both NativeAOT binaries pass `probe` and `read` on the ACadSharp samples; limits hold; Q1, Q2, Q5, Q6 settled; the private pass over the owner's DWGs is written | Not started |
 | M3 | Reading core | B | M2 | `info`, `layers`, `blocks`, `texts` and `query` exact on the sample, on both platforms | Not started |
 | M4 | Measuring | B | M3 | `measure`, `runs`, `render`, `diff` and `check` exact on the sample; hostile set and independent producers pass | Not started |
