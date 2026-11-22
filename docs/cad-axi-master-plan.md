@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Engine proof passed (comisai/cad-axi#3, 2026-11-22): ACadSharp with NativeAOT holds on linux-x64 and linux-arm64 ([engine proof](engine-proof.md)). The private pass over the owner's DWG files waits for A2. Reading (M3) is next. |
+| Status | Version 0.1 built (comisai/cad-axi#4, 2026-11-22): reading, measuring, creating and editing, with every write checked ([write matrix](write-matrix.md)). The release and the Comis pack follow. The live gates wait for A2, the AUDIT check for A5. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) (tasks T1 to T50, test plan, CI) |
@@ -30,10 +30,10 @@ Updated 2026-11-22.
 | Repository and plans | **Done** | `comisai/cad-axi` is public under MIT; design, implementation plan and master plan merged in comisai/cad-axi#1 |
 | Repository settings and CI | **Done** | CI on native x64 and arm64 runners since #3; branch protection, the tag rule and the npm environment applied after #3 |
 | Engine proof | **Done, except T10** | [Engine proof](engine-proof.md): 47 of 47 gates on each platform and 15 of 15 independent checks; Q1, Q2, Q5, Q6 and Q8 answered. T10 waits for A2 |
-| Reading (0.1) | Not started | M3 to M6 |
-| Comis pack | Not started | M7 and M8 |
-| Creating (0.2) | Not started | M9 |
-| Editing (0.3) | Not started | M10 |
+| Reading (0.1) | **Built** | M3 and M4 gates pass on the sample on both platforms (#4); M5 waits for A2 |
+| Comis pack | Next | M7 and M8, after the release |
+| Creating | **Built, in 0.1** | `create` and `create --like`; every output read again and compared; LibreDWG and ezdxf read every output in CI. The AUDIT check waits for A5 |
+| Editing | **Built, in 0.1** | `edit` and `convert` behind the verified lists ([write matrix](write-matrix.md)); L7 and L8 wait for A2 and A5 |
 | Owner's DWG files | Not received | A2. The drawings used to qualify `drawing-axi` were PDFs; DWG files are needed for every live gate here |
 
 ## 3. Workstreams

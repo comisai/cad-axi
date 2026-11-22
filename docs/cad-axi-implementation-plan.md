@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | T1 to T9 done (comisai/cad-axi#1 and #3, 2026-11-22); results in [`engine-proof.md`](engine-proof.md). T10 waits for the owner's DWG files. M3 is next. |
+| Status | T1 to T9, T11 to T27, T30, T31, T38 to T42 and T45 to T49 built (comisai/cad-axi#1, #3 and #4, 2026-11-22). Waiting for the owner: T10 and T28 (DWG files), T44 and T50 (AUDIT in AutoCAD). The Comis tasks T29, T33 to T37 and T43 follow release 0.1.0. Creating and editing ship in 0.1.0 rather than 0.2.0 and 0.3.0, each write checked as §8.9 says. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Master plan | [`cad-axi-master-plan.md`](cad-axi-master-plan.md) (milestones, gates, owner actions) |

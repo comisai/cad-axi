@@ -23,6 +23,7 @@ internal static class Program
                 "probe" => Probe(rec),
                 "read" => Reader.Run(rec, o),
                 "write" => Writer.Run(rec, o),
+                "edit" => Writer.Edit(rec, o),
                 _ => throw new EngineError("usage"),
             };
         }

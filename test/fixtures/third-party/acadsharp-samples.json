@@ -5,13 +5,37 @@
   "license": "MIT",
   "note": "Downloaded in CI and checked by SHA-256; not committed here.",
   "files": [
-    { "name": "sample_AC1014.dwg", "sha256": "d1ec4519be14ac49ecab5ec024ad951271e00261a1851f623a784a97ba6ede73" },
-    { "name": "sample_AC1015.dwg", "sha256": "8ffbdc713f5838cbbb1596a8422e2b607e5c9e79921e852cbb5abee4af76ea4e" },
-    { "name": "sample_AC1018.dwg", "sha256": "7d26f908516ec5fb89cc8054af33aff233b68a7b63208bbc5b7f9f4d9bff9866" },
-    { "name": "sample_AC1021.dwg", "sha256": "70b5efec9a3c230a9892e810154a760fe72311b1e730fb582f22950135da770a" },
-    { "name": "sample_AC1024.dwg", "sha256": "53ecc28e54ff0bbfb022989c47fd1cb16eb07a98825309b66cdf316d900fe4ce" },
-    { "name": "sample_AC1027.dwg", "sha256": "4c63508dd794d5cdfb56c60aded47928999b02619ea8c2ef435a4b74e60d24d6" },
-    { "name": "sample_AC1032.dwg", "sha256": "0e8faaca949c9429c92240082d9ea4d3524aca5baf7c7815ec439245c321b528" },
-    { "name": "sample_AC1015_ascii.dxf", "sha256": "4f7d7f0d3957d4d32c6c43e4c600eea8e90fc0fcb1b36b11256095a9789a923f" }
+    {
+      "name": "sample_AC1014.dwg",
+      "sha256": "d1ec4519be14ac49ecab5ec024ad951271e00261a1851f623a784a97ba6ede73"
+    },
+    {
+      "name": "sample_AC1015.dwg",
+      "sha256": "8ffbdc713f5838cbbb1596a8422e2b607e5c9e79921e852cbb5abee4af76ea4e"
+    },
+    {
+      "name": "sample_AC1018.dwg",
+      "sha256": "7d26f908516ec5fb89cc8054af33aff233b68a7b63208bbc5b7f9f4d9bff9866"
+    },
+    {
+      "name": "sample_AC1021.dwg",
+      "sha256": "70b5efec9a3c230a9892e810154a760fe72311b1e730fb582f22950135da770a"
+    },
+    {
+      "name": "sample_AC1024.dwg",
+      "sha256": "53ecc28e54ff0bbfb022989c47fd1cb16eb07a98825309b66cdf316d900fe4ce"
+    },
+    {
+      "name": "sample_AC1027.dwg",
+      "sha256": "4c63508dd794d5cdfb56c60aded47928999b02619ea8c2ef435a4b74e60d24d6"
+    },
+    {
+      "name": "sample_AC1032.dwg",
+      "sha256": "0e8faaca949c9429c92240082d9ea4d3524aca5baf7c7815ec439245c321b528"
+    },
+    {
+      "name": "sample_AC1015_ascii.dxf",
+      "sha256": "4f7d7f0d3957d4d32c6c43e4c600eea8e90fc0fcb1b36b11256095a9789a923f"
+    }
   ]
 }

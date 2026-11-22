@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Draft. Phase 0, the engine proof, passed on both platforms ([engine proof](engine-proof.md)); its findings are in §8.10 and §15. Reading comes next ([master plan](cad-axi-master-plan.md)). |
+| Status | Built: phases 1 to 3 (reading, creating, editing) are in version 0.1, checked on made-up drawings, ACadSharp's samples and two independent readers ([write matrix](write-matrix.md)). The live gates on the owner's drawings and the AUDIT check wait for the owner ([master plan](cad-axi-master-plan.md)). |
 | Date | 2026-11-22 |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) |
 | Master plan | [`cad-axi-master-plan.md`](cad-axi-master-plan.md) |

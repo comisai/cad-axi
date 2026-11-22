@@ -7,7 +7,15 @@ import { join } from 'node:path';
 
 const dir = process.argv[2];
 if (!dir) throw new Error('usage: fetch-samples.mjs <dir>');
-const list = JSON.parse(readFileSync(new URL('../test/fixtures/third-party/acadsharp-samples.json', import.meta.url), 'utf8'));
+const list = JSON.parse(
+  readFileSync(
+    new URL(
+      '../test/fixtures/third-party/acadsharp-samples.json',
+      import.meta.url,
+    ),
+    'utf8',
+  ),
+);
 mkdirSync(dir, { recursive: true });
 for (const f of list.files) {
   const url = `https://raw.githubusercontent.com/DomCR/ACadSharp/${list.commit}/samples/${f.name}`;

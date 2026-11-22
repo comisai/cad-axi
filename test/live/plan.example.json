@@ -1,0 +1,13 @@
+{
+  "files": [
+    {
+      "path": "/private/plans/level-1.dwg",
+      "layers": ["SAN", "RAIN", "F", "CW"],
+      "texts": ["a text expected on the sheet"],
+      "units": null,
+      "region": null,
+      "groups": [{ "name": "sewer", "layers": ["SAN"], "reference_m": 412.0 }],
+      "edits": [{ "ops": "/private/plans/level-1-ops.json" }]
+    }
+  ]
+}
