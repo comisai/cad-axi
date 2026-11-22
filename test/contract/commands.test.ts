@@ -283,6 +283,11 @@ describe('pictures and comparing', () => {
       readFileSync(new URL('../../package.json', import.meta.url), 'utf8'),
     ) as { version: string };
     assert.equal(doc.package, pkg.version);
+    assert.equal(
+      doc.engine,
+      pkg.version,
+      'the engine carries the package version',
+    );
     const r = await run('--version');
     assert.equal(r.stdout, `${pkg.version}\n`);
   });
