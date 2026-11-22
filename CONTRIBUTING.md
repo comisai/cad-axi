@@ -1,6 +1,6 @@
 # Contributing to cad-axi
 
-Thank you for helping. cad-axi has its engine and its engine proof; the commands are not built yet. The plans in `docs/` say what will be built and in what order.
+Thank you for helping. The plans in `docs/` say what cad-axi does and why; the design says how each command behaves.
 
 ## Building the engine
 
@@ -13,6 +13,25 @@ dotnet publish -c Release -r linux-x64 --no-restore -o out/linux-x64     # or li
 node ../scripts/fetch-samples.mjs /tmp/samples
 node ../scripts/engine-proof.mjs --engine out/linux-x64/cad-axi-engine --work /tmp/proof --report /tmp/proof.json --samples /tmp/samples
 ```
+
+## Running the tests
+
+The front end needs Node 22.18 or later. Unit tests run anywhere:
+
+```sh
+npm ci --ignore-scripts
+npm run typecheck && npm run lint && npm test
+```
+
+Everything else runs the real engine, so it needs Linux on x64 or arm64 and an engine built into `engine/out/<platform>/` as above:
+
+```sh
+npm run test:contract   # every command, the AXI principles, hostile files
+npm run test:write      # create, edit and convert at every version
+npm run build && node scripts/assemble-package.mjs <engines> && npm run test:dist
+```
+
+On a Mac, build and test inside the image from `scripts/engine-dev.Dockerfile` with Node added.
 
 ## Before you start
 

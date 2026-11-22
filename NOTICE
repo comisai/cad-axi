@@ -1,16 +1,20 @@
 cad-axi
 Copyright (c) 2026 cad-axi contributors. MIT License; see LICENSE.
 
-There is no code yet. When there is, this file will credit:
-- ACadSharp (https://github.com/DomCR/ACadSharp), MIT License, compiled into
-  the engine, with the CSUtilities code it includes (MIT License);
-- the .NET runtime parts that NativeAOT links into the engine (MIT License);
-- the parts of the AXI runtime taken from drawing-axi
-  (https://github.com/comisai/drawing-axi), MIT License;
-- the runtime dependency @toon-format/toon, MIT License.
+The package includes, unmodified or compiled in:
+- ACadSharp 3.8.35 (https://github.com/DomCR/ACadSharp), MIT License,
+  Copyright (c) 2021 Albert Domenech, compiled into the engine, with the
+  CSUtilities code it includes (MIT License);
+- the .NET runtime parts that NativeAOT links into the engine
+  (https://github.com/dotnet/runtime), MIT License, Copyright (c) .NET
+  Foundation and Contributors;
+- parts of the AXI runtime and the size and Hebrew text rules taken from
+  drawing-axi (https://github.com/comisai/drawing-axi), MIT License;
+- the runtime dependency @toon-format/toon 4.4.0, MIT License.
 
-Nothing licensed under the GPL and nothing from the Open Design Alliance is
-included in this project or its package.
+LibreDWG and ezdxf are used only in this repository's CI, as independent
+readers of what the tool writes. Nothing licensed under the GPL and nothing
+from the Open Design Alliance is included in this project or its package.
 
 AutoCAD and DWG are trademarks of Autodesk, Inc. This project is not made or
 endorsed by Autodesk. It works with DWG files for interoperability and never

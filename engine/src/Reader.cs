@@ -1,42 +1,45 @@
 using System.Diagnostics;
 using System.Text;
-using System.Text.Json;
 using ACadSharp;
 using ACadSharp.Entities;
 using ACadSharp.IO;
+using ACadSharp.Objects;
 using ACadSharp.Tables;
-using CSMath;
 
 namespace CadAxi.Engine;
 
-// The read verb: a header record, layer records, optional entity records,
-// a class census and an end record with counts.
+// The read verb. Records, in order: header; linetypes, styles, layers and
+// blocks with their entity counts; external references and images as
+// metadata; with --entities, one record per entity; then entity kinds, the
+// class census, non-graphical objects, and an end record with counts.
 internal static class Reader
 {
-    public static int Run(Records rec, Options o)
+    public const long MaxEntities = 2_000_000;
+
+    public static CadDocument Open(Options o, out string kind, out int errors, out int warnings)
     {
         if (o.File is null) throw new EngineError("usage");
         var info = new FileInfo(o.File);
         if (!info.Exists) throw new EngineError("not_found");
         if (info.Length > o.MaxBytes) throw new EngineError("too_large");
-        var (kind, code) = Sniff(o.File);
-        if (kind is null) throw new EngineError("not_cad");
+        var (k, code) = Sniff(o.File);
+        if (k is null) throw new EngineError("not_cad");
         // R13 and older DWG are not read (design §4.2).
-        if (kind == "dwg" && string.CompareOrdinal(code, "AC1014") < 0) throw new EngineError("unsupported");
+        if (k == "dwg" && string.CompareOrdinal(code, "AC1014") < 0) throw new EngineError("unsupported");
+        kind = k;
 
-        var clock = Stopwatch.StartNew();
-        var errors = 0;
-        var warnings = 0;
-        void Note(object? sender, NotificationEventArgs e)
+        var e = 0;
+        var w = 0;
+        void Note(object? sender, NotificationEventArgs n)
         {
-            if (e.NotificationType == NotificationType.Error) errors++;
-            else if (e.NotificationType == NotificationType.Warning) warnings++;
+            if (n.NotificationType == NotificationType.Error) e++;
+            else if (n.NotificationType == NotificationType.Warning) w++;
         }
 
         CadDocument doc;
         try
         {
-            doc = kind == "dwg"
+            doc = k == "dwg"
                 ? DwgReader.Read(o.File, new DwgReaderConfiguration
                 {
                     KeepUnknownEntities = true,
@@ -50,22 +53,112 @@ internal static class Reader
         }
         catch (OutOfMemoryException) { throw new EngineError("too_large"); }
         catch (EngineError) { throw; }
-        catch (Exception e) when (e.GetType().Name == "CadNotSupportedException") { throw new EngineError("unsupported"); }
-        catch (Exception e) { throw new EngineError("damaged", e.GetType().Name); }
+        catch (Exception x) when (x.GetType().Name == "CadNotSupportedException") { throw new EngineError("unsupported"); }
+        catch (Exception x) { throw new EngineError("damaged", x.GetType().Name); }
+        errors = e;
+        warnings = w;
+        return doc;
+    }
 
-        var header = doc.Header;
+    public static int Run(Records rec, Options o)
+    {
+        var clock = Stopwatch.StartNew();
+        var doc = Open(o, out var kind, out var errors, out var warnings);
+        Census census;
+        // A model that cannot be walked is a damaged file, not an engine fault.
+        try { census = Emit(rec, doc, kind, o.Entities); }
+        catch (EngineError) { throw; }
+        catch (OutOfMemoryException) { throw new EngineError("too_large"); }
+        catch (Exception x) { throw new EngineError("damaged", x.GetType().Name); }
+        Finish(rec, census, errors, warnings, clock);
+        return 0;
+    }
+
+    public sealed class Census
+    {
+        public long Entities;
+        public long Unknown;
+        public long Proxies;
+        public long UnknownObjects;
+    }
+
+    public static Census Emit(Records rec, CadDocument doc, string kind, bool entities)
+    {
+        // First pass: counts by layer and by block, and the kinds.
+        var byLayer = new Dictionary<string, long>(StringComparer.Ordinal);
+        var kinds = new SortedDictionary<string, long>(StringComparer.Ordinal);
+        var unknownByClass = new Dictionary<string, long>(StringComparer.Ordinal);
+        var census = new Census();
+        foreach (var block in doc.BlockRecords)
+        {
+            foreach (var e in block.Entities)
+            {
+                census.Entities++;
+                if (census.Entities > MaxEntities) throw new EngineError("too_large");
+                var layer = e.Layer?.Name ?? "";
+                byLayer[layer] = byLayer.GetValueOrDefault(layer) + 1;
+                var name = KindOf(e);
+                kinds[name] = kinds.GetValueOrDefault(name) + 1;
+                if (e is UnknownEntity)
+                {
+                    census.Unknown++;
+                    unknownByClass[name] = unknownByClass.GetValueOrDefault(name) + 1;
+                }
+                if (e is ProxyEntity) census.Proxies++;
+            }
+        }
+
+        var h = doc.Header;
         rec.Write("header", w =>
         {
             w.WriteString("format", kind);
-            w.WriteString("version", header.VersionString);
-            w.WriteString("codepage", header.CodePage);
-            w.WriteNumber("insunits", (int)header.InsUnits);
-            Point(w, "extmin", header.ModelSpaceExtMin);
-            Point(w, "extmax", header.ModelSpaceExtMax);
+            w.WriteString("version", h.VersionString);
+            w.WriteString("codepage", h.CodePage);
+            w.WriteNumber("insunits", (int)h.InsUnits);
+            w.WriteNumber("measurement", (int)h.MeasurementUnits);
+            Json.Point(w, "extmin", h.ModelSpaceExtMin, lenient: true);
+            Json.Point(w, "extmax", h.ModelSpaceExtMax, lenient: true);
+            w.WriteNumber("ltscale", Json.Safe(h.LineTypeScale));
             w.WriteStartArray("layouts");
-            foreach (var l in doc.Layouts) w.WriteStringValue(l.Name);
+            foreach (var l in doc.Layouts.OrderBy(l => l.TabOrder))
+            {
+                w.WriteStartObject();
+                w.WriteString("name", l.Name);
+                w.WriteString("block", l.AssociatedBlock?.Name ?? "");
+                w.WriteNumber("tab", l.TabOrder);
+                w.WriteEndObject();
+            }
             w.WriteEndArray();
         });
+
+        foreach (var lt in doc.LineTypes)
+        {
+            rec.Write("linetype", w =>
+            {
+                w.WriteString("name", lt.Name);
+                w.WriteString("description", lt.Description ?? "");
+                w.WriteStartArray("pattern");
+                foreach (var s in lt.Segments) w.WriteNumberValue(Json.Safe(s.Length));
+                w.WriteEndArray();
+                w.WriteBoolean("complex", lt.IsComplex);
+            });
+        }
+
+        foreach (var s in doc.TextStyles)
+        {
+            rec.Write("style", w =>
+            {
+                var font = s.Filename ?? "";
+                w.WriteString("name", s.Name);
+                w.WriteString("font", font);
+                w.WriteString("bigfont", s.BigFontFilename ?? "");
+                w.WriteString("kind", FontKind(s));
+                w.WriteBoolean("backwards", s.MirrorFlag.HasFlag(TextMirrorFlag.Backward));
+                w.WriteBoolean("upside", s.MirrorFlag.HasFlag(TextMirrorFlag.UpsideDown));
+                w.WriteNumber("height", Json.Safe(s.Height));
+                w.WriteNumber("width", Json.Safe(s.Width));
+            });
+        }
 
         foreach (var layer in doc.Layers)
         {
@@ -75,30 +168,61 @@ internal static class Reader
                 w.WriteBoolean("on", layer.IsOn);
                 w.WriteBoolean("frozen", layer.Flags.HasFlag(LayerFlags.Frozen));
                 w.WriteBoolean("locked", layer.Flags.HasFlag(LayerFlags.Locked));
-                w.WriteNumber("color", layer.Color.Index);
+                w.WriteBoolean("plot", layer.PlotFlag);
+                Json.Color(w, layer.Color);
+                w.WriteString("linetype", layer.LineType?.Name ?? "");
+                w.WriteNumber("entities", byLayer.GetValueOrDefault(layer.Name));
             });
         }
 
-        // Entities by space: model space, each layout's paper space, and
-        // the entities inside block definitions.
-        var kinds = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        var unknown = new SortedDictionary<string, int>(StringComparer.Ordinal);
-        long entities = 0;
-        foreach (var block in doc.BlockRecords)
+        foreach (var b in doc.BlockRecords)
         {
-            var space = block.Name;
-            foreach (var e in block.Entities)
+            rec.Write("block", w =>
             {
-                entities++;
-                var name = e.ObjectName;
-                kinds[name] = kinds.GetValueOrDefault(name) + 1;
-                if (e is UnknownEntity u)
-                {
-                    var cls = u.DxfClass?.DxfName ?? name;
-                    unknown[cls] = unknown.GetValueOrDefault(cls) + 1;
-                }
-                if (o.Entities) Entity(rec, e, space);
-            }
+                var flags = b.Flags;
+                var external = flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRef)
+                    || flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefOverlay);
+                w.WriteString("name", b.Name);
+                Json.Point(w, "base", b.BlockEntity?.BasePoint ?? CSMath.XYZ.Zero);
+                w.WriteBoolean("layout", b.Layout is not null);
+                w.WriteBoolean("anonymous", b.IsAnonymous);
+                w.WriteBoolean("external", external);
+                w.WriteBoolean("overlay", flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefOverlay));
+                w.WriteBoolean("dependent", flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefDependent));
+                // An external reference's path is never printed (protocol rules).
+                w.WriteBoolean("path_present", !string.IsNullOrEmpty(b.BlockEntity?.XRefPath));
+                w.WriteNumber("units", (int)b.Units);
+                w.WriteStartArray("attributes");
+                foreach (var a in b.AttributeDefinitions) w.WriteStringValue(a.Tag);
+                w.WriteEndArray();
+                w.WriteNumber("entities", b.Entities.Count);
+            });
+        }
+
+        foreach (var image in doc.ImageDefinitions)
+        {
+            rec.Write("external", w =>
+            {
+                w.WriteString("kind", "image");
+                w.WriteString("name", image.Name ?? "");
+                w.WriteBoolean("path_present", !string.IsNullOrEmpty(image.FileName));
+            });
+        }
+        foreach (var pdf in doc.PdfDefinitions)
+        {
+            rec.Write("external", w =>
+            {
+                w.WriteString("kind", "pdf");
+                w.WriteString("name", pdf.Name ?? "");
+                w.WriteBoolean("path_present", !string.IsNullOrEmpty(pdf.File));
+            });
+        }
+
+        if (entities)
+        {
+            foreach (var block in doc.BlockRecords)
+                foreach (var e in block.Entities)
+                    Entities.Write(rec, e, block.Name);
         }
 
         foreach (var (name, count) in kinds)
@@ -108,91 +232,80 @@ internal static class Reader
         {
             rec.Write("class", w =>
             {
-                w.WriteString("name", c.DxfName);
-                w.WriteString("cpp", c.CppClassName);
+                w.WriteString("name", c.DxfName ?? "");
+                w.WriteString("cpp", c.CppClassName ?? "");
+                w.WriteString("app", c.ApplicationName ?? "");
                 w.WriteNumber("instances", c.InstanceCount);
                 w.WriteBoolean("entity", c.IsAnEntity);
-                w.WriteNumber("unknown", unknown.GetValueOrDefault(c.DxfName));
+                w.WriteNumber("unknown", unknownByClass.GetValueOrDefault(c.DxfName ?? ""));
             });
         }
 
+        var objects = new SortedDictionary<string, (long Count, bool Unknown)>(StringComparer.Ordinal);
+        var seen = new HashSet<ulong>();
+        Walk(doc.RootDictionary, objects, seen, 0);
+        foreach (var (name, (count, unknown)) in objects)
+        {
+            if (unknown) census.UnknownObjects += count;
+            rec.Write("object", w =>
+            {
+                w.WriteString("name", name);
+                w.WriteNumber("count", count);
+                w.WriteBoolean("unknown", unknown);
+            });
+        }
+        return census;
+    }
+
+    public static void Finish(Records rec, Census census, int errors, int warnings, Stopwatch clock)
+    {
         var ms = clock.ElapsedMilliseconds;
         var peak = Process.GetCurrentProcess().PeakWorkingSet64;
         rec.Close("end", w =>
         {
-            w.WriteNumber("entities", entities);
-            w.WriteNumber("unknown", unknown.Values.Sum());
+            w.WriteNumber("entities", census.Entities);
+            w.WriteNumber("unknown", census.Unknown);
+            w.WriteNumber("proxies", census.Proxies);
+            w.WriteNumber("unknown_objects", census.UnknownObjects);
             w.WriteNumber("errors", errors);
             w.WriteNumber("warnings", warnings);
             w.WriteNumber("ms", ms);
             w.WriteNumber("peak_rss", peak);
         });
-        return 0;
     }
 
-    private static void Entity(Records rec, Entity e, string space)
+    // Non-graphical objects by type, found from the root dictionary down.
+    // Bounded in depth and by handle, so a cycle in a damaged file ends.
+    private static void Walk(CadDictionary? dict, SortedDictionary<string, (long, bool)> into, HashSet<ulong> seen, int depth)
     {
-        rec.Write("entity", w =>
+        if (dict is null || depth > 32 || !seen.Add(dict.Handle)) return;
+        foreach (var o in dict)
         {
-            w.WriteString("h", e.Handle.ToString("X"));
-            w.WriteString("kind", e.ObjectName);
-            w.WriteString("layer", e.Layer?.Name ?? "");
-            w.WriteString("space", space);
-            switch (e)
-            {
-                case Line l:
-                    Point(w, "from", l.StartPoint);
-                    Point(w, "to", l.EndPoint);
-                    break;
-                case Circle c:
-                    Point(w, "center", c.Center);
-                    w.WriteNumber("radius", c.Radius);
-                    break;
-                case LwPolyline p:
-                    w.WriteStartArray("pts");
-                    foreach (var v in p.Vertices)
-                    {
-                        w.WriteStartArray();
-                        w.WriteNumberValue(v.Location.X);
-                        w.WriteNumberValue(v.Location.Y);
-                        w.WriteEndArray();
-                    }
-                    w.WriteEndArray();
-                    w.WriteStartArray("bulges");
-                    foreach (var v in p.Vertices) w.WriteNumberValue(v.Bulge);
-                    w.WriteEndArray();
-                    w.WriteBoolean("closed", p.IsClosed);
-                    break;
-                case TextEntity t:
-                    w.WriteString("raw", t.Value);
-                    Point(w, "at", t.InsertPoint);
-                    w.WriteNumber("height", t.Height);
-                    w.WriteString("style", t.Style?.Name ?? "");
-                    break;
-                case MText m:
-                    w.WriteString("raw", m.Value);
-                    Point(w, "at", m.InsertPoint);
-                    w.WriteNumber("height", m.Height);
-                    w.WriteString("style", m.Style?.Name ?? "");
-                    break;
-            }
-        });
+            if (o is null) continue;
+            var unknown = o.GetType().Name.StartsWith("Unknown", StringComparison.Ordinal);
+            var name = o.ObjectName ?? o.GetType().Name;
+            var (count, _) = into.GetValueOrDefault(name);
+            into[name] = (count + 1, unknown);
+            if (o is CadDictionary child) Walk(child, into, seen, depth + 1);
+            else if (o.XDictionary is { } x) Walk(x, into, seen, depth + 1);
+        }
     }
 
-    private static void Point(Utf8JsonWriter w, string name, XYZ p)
+    public static string KindOf(Entity e) => e switch
     {
-        w.WriteStartArray(name);
-        Finite(w, p.X);
-        Finite(w, p.Y);
-        Finite(w, p.Z);
-        w.WriteEndArray();
-    }
+        UnknownEntity u => u.DxfClass?.DxfName ?? "UNKNOWN",
+        _ => e.ObjectName ?? e.GetType().Name,
+    };
 
-    // A non-finite coordinate is never printed (design: protocol rules).
-    private static void Finite(Utf8JsonWriter w, double v)
+    private static string FontKind(TextStyle s)
     {
-        if (!double.IsFinite(v)) throw new EngineError("damaged");
-        w.WriteNumberValue(v);
+        var f = (s.Filename ?? "").ToLowerInvariant();
+        if (s.IsShapeFile || f.EndsWith(".shx", StringComparison.Ordinal)) return "shx";
+        if (f.EndsWith(".ttf", StringComparison.Ordinal) || f.EndsWith(".otf", StringComparison.Ordinal)
+            || f.EndsWith(".ttc", StringComparison.Ordinal)) return "ttf";
+        // A bare name with no extension is an SHX font, as AutoCAD reads it.
+        if (f.Length > 0 && !f.Contains('.')) return "shx";
+        return "unknown";
     }
 
     // Which format a file is, by its first bytes. A DWG starts with its
@@ -210,7 +323,7 @@ internal static class Reader
             return ("dwg", Encoding.ASCII.GetString(bytes[..6]));
         var text = Encoding.ASCII.GetString(bytes);
         if (text.StartsWith("AutoCAD Binary DXF", StringComparison.Ordinal)) return ("dxf", null);
-        var lines = text.Split('\n', 6);
+        var lines = text.TrimStart('﻿').Split('\n', 6);
         if (lines.Length >= 2)
         {
             var group = lines[0].Trim();

@@ -12,16 +12,25 @@ cad-axi is an AXI, an [agent experience interface](https://axi.md). Every comman
 
 It is built to run inside Comis, next to [`drawing-axi`](https://github.com/comisai/drawing-axi), which reads drawings plotted to PDF. It also works on its own.
 
-> **Status:** the engine is proved; the commands are not built yet. The [engine proof](docs/engine-proof.md) built the engine for linux-x64 and linux-arm64 and checked it on made-up drawings and on ACadSharp's sample drawings, with LibreDWG and ezdxf as independent readers. The plans are in `docs/`:
+> **Status:** version 0.1 reads, creates and edits drawings. Reading is checked on made-up drawings with chosen answers and on ACadSharp's sample drawings, which AutoCAD wrote in every version from R14 to 2018. Writing is checked by reading every output again and, in CI, by LibreDWG and ezdxf. Two checks wait for the owner: the live test on real drawings, and opening written files in AutoCAD with AUDIT ([master plan](docs/cad-axi-master-plan.md)). The plans are in `docs/`:
 > - [Design](docs/cad-axi-design.md): what DWG files hold, the options, the architecture, the commands and how writes are kept safe.
 > - [Implementation plan](docs/cad-axi-implementation-plan.md): layout, module contracts, the engine protocol, tasks, tests, CI and release.
 > - [Master plan](docs/cad-axi-master-plan.md): milestones, gates, owner actions, decisions and risks.
+> - [Engine proof](docs/engine-proof.md) and [write matrix](docs/write-matrix.md): what was measured.
+> - [Recipes](docs/recipes.md): questions and the commands that answer them.
 
-## How it will work
+## Install
 
-A TypeScript front end runs the commands. A small engine, compiled ahead of time from the MIT-licensed [ACadSharp](https://github.com/DomCR/ACadSharp) library, reads and writes the files. It ships as one binary for linux-x64 and one for linux-arm64, so no .NET runtime is needed. The front end starts the engine as a separate process, under limits, for each command.
+```sh
+npm install -g cad-axi
+cad-axi
+```
 
-Planned commands:
+It runs on Linux on x64 and arm64, with Node 22.18 or later. The engine for both platforms is inside the package; nothing is downloaded and no .NET runtime is needed.
+
+## How it works
+
+A TypeScript front end runs the commands. A small engine, compiled ahead of time from the MIT-licensed [ACadSharp](https://github.com/DomCR/ACadSharp) library, reads and writes the files. The front end starts the engine as a separate process, under a memory cap and a time limit, for each command, and does all measuring and formatting itself.
 
 ```text
 cad-axi                                  home view: the DWG and DXF files in this folder
@@ -30,7 +39,7 @@ cad-axi layers <file>                    layers with their state, entity count a
 cad-axi blocks <file>                    blocks with insert counts and attribute tags
 cad-axi texts <file>                     the text on the drawing, decoded, with the stored form kept
 cad-axi query <file>                     entities by type, layer, block, area or handle
-cad-axi measure <file>                   length by layer, linetype, colour or named group
+cad-axi measure <file>                   length by layer, linetype, colour, named group or pipe size
 cad-axi runs <file> --layer L            connected runs with the size labels beside them
 cad-axi render <file> --out f.svg        a picture to look at
 cad-axi diff <a> <b>                     what changed between two drawings
@@ -39,7 +48,10 @@ cad-axi create --spec s.json --out f.dwg a new drawing from a closed specificati
 cad-axi edit <file> --ops o.json --out f.dwg
                                          a copy with a closed list of changes applied
 cad-axi convert <file> --out f.dxf       another version or format
+cad-axi version                          the package, engine and ACadSharp versions
 ```
+
+`cad-axi help <command>` gives each command's flags. Lengths are printed in metres when the drawing states its units; with none, pass `--units`.
 
 ## Rules it keeps
 

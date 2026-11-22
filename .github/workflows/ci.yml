@@ -1,9 +1,10 @@
 name: ci
-# The engine proof (implementation plan M2): the engine built with NativeAOT on
-# native x64 and arm64 runners, checked on made-up drawings and ACadSharp's
-# sample drawings, cross-checked by LibreDWG and ezdxf, and packed and
-# installed as npm would. LibreDWG and ezdxf run here only; nothing from them
-# ships.
+# The front end checked on Node 22 and 24; the engine built with NativeAOT on
+# native x64 and arm64 runners and proved on made-up drawings and ACadSharp's
+# samples; every command, the AXI principles, hostile files and the write
+# matrix run against that engine on each platform; LibreDWG and ezdxf read
+# what the tool writes; the package is packed and installed as npm would.
+# LibreDWG and ezdxf run here only; nothing from them ships.
 on:
   push:
     branches: [main]
@@ -15,6 +16,25 @@ defaults:
     # bash -eo pipefail, so a failing step is not hidden by `| tee`.
     shell: bash
 jobs:
+  front:
+    name: front (node ${{ matrix.node }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22', '24']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - run: npm ci --ignore-scripts
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
   engine:
     name: engine (${{ matrix.rid }})
     strategy:
@@ -75,6 +95,44 @@ jobs:
           name: proof-${{ matrix.rid }}
           path: keep/
 
+  contract:
+    name: contract (${{ matrix.rid }})
+    needs: engine
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-${{ matrix.rid }}
+          path: engine/out/${{ matrix.rid }}
+      - run: chmod 755 engine/out/${{ matrix.rid }}/cad-axi-engine
+      - run: npm ci --ignore-scripts
+      - name: Every command, the AXI principles and hostile files, on the source
+        run: npm run test:contract
+      - name: The write matrix
+        run: npm run test:write
+      - name: The same on the built package
+        run: |
+          npm run build
+          mkdir -p engine-bin/${{ matrix.rid }}
+          cp engine/out/${{ matrix.rid }}/cad-axi-engine engine-bin/${{ matrix.rid }}/
+          other=$([ "${{ matrix.rid }}" = linux-x64 ] && echo linux-arm64 || echo linux-x64)
+          mkdir -p engine-bin/$other && cp engine/out/${{ matrix.rid }}/cad-axi-engine engine-bin/$other/
+          node scripts/assemble-package.mjs engine-bin
+          npm run test:dist
+
   oracles:
     name: independent checks
     needs: engine
@@ -84,6 +142,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          cache: npm
       - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: libredwg
         with:
@@ -97,19 +156,19 @@ jobs:
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: engine-linux-x64
-          path: engine-bin
+          path: engine/out/linux-x64
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: proof-linux-x64
           path: proof
       - name: Fetch ACadSharp's sample drawings
         run: node scripts/fetch-samples.mjs "$RUNNER_TEMP/samples"
-      - name: Cross-check
+      - name: Cross-check the engine
         run: |
-          chmod 755 engine-bin/cad-axi-engine
+          chmod 755 engine/out/linux-x64/cad-axi-engine
           "$RUNNER_TEMP/venv/bin/python" scripts/oracles/make_hebrew_dxf.py "$RUNNER_TEMP/hebrew.dxf"
           node scripts/oracles/cross-check.mjs \
-            --engine engine-bin/cad-axi-engine \
+            --engine engine/out/linux-x64/cad-axi-engine \
             --libredwg "$HOME/libredwg/bin" \
             --written proof/written \
             --samples "$RUNNER_TEMP/samples" \
@@ -117,11 +176,22 @@ jobs:
             --python "$RUNNER_TEMP/venv/bin/python" \
             --work "$RUNNER_TEMP/oracle" \
             --report oracle.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The write matrix, read by LibreDWG and ezdxf
+        run: |
+          npm ci --ignore-scripts
+          node scripts/oracles/write-matrix.mjs \
+            --cli src/bin/cad-axi.ts \
+            --libredwg "$HOME/libredwg/bin" \
+            --python "$RUNNER_TEMP/venv/bin/python" \
+            --work "$RUNNER_TEMP/matrix" \
+            --report write-matrix.json | tee -a "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
           name: oracle-report
-          path: oracle.json
+          path: |
+            oracle.json
+            write-matrix.json
 
   package:
     name: package
@@ -132,6 +202,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+          cache: npm
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: engine-linux-x64
@@ -140,15 +211,18 @@ jobs:
         with:
           name: engine-linux-arm64
           path: engine-bin/linux-arm64
-      - name: Assemble and check
+      - name: Build, assemble and check
         run: |
+          npm ci --ignore-scripts
+          npm run build
           node scripts/assemble-package.mjs engine-bin
           node scripts/check-package.mjs | tee -a "$GITHUB_STEP_SUMMARY"
           npm pack --ignore-scripts
+          mv cad-axi-*.tgz cad-axi.tgz
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: package
-          path: cad-axi-0.0.0.tgz
+          path: cad-axi.tgz
           if-no-files-found: error
 
   install:
@@ -166,7 +240,7 @@ jobs:
     steps:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: '24'
+          node-version: '22'
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: package
@@ -175,11 +249,15 @@ jobs:
         run: |
           mkdir clean && cd clean
           npm init -y >/dev/null
-          npm install --ignore-scripts --no-audit --no-fund ../pkg/cad-axi-0.0.0.tgz
+          npm install --ignore-scripts --no-audit --no-fund ../pkg/cad-axi.tgz
           engine=node_modules/cad-axi/dist/engine/${{ matrix.rid }}/cad-axi-engine
           mode=$(stat -c %a "$engine")
           echo "Installed engine mode: $mode" | tee -a "$GITHUB_STEP_SUMMARY"
           test "$mode" = 755
-          out=$(npx --no-install cad-axi)
-          echo "$out" | tee -a "$GITHUB_STEP_SUMMARY"
-          echo "$out" | grep -q '"platform":"${{ matrix.rid }}"'
+          npx --no-install cad-axi version | tee -a "$GITHUB_STEP_SUMMARY"
+          npx --no-install cad-axi version | grep -q 'platform: ${{ matrix.rid }}'
+          test "$(npx --no-install cad-axi --version)" = "$(node -p "require('cad-axi/package.json').version")"
+          printf '{"entities":[{"kind":"line","from":[0,0],"to":[1000,0]}]}' > spec.json
+          npx --no-install cad-axi create --spec spec.json --out one.dwg
+          npx --no-install cad-axi measure one.dwg | tee -a "$GITHUB_STEP_SUMMARY"
+          npx --no-install cad-axi measure one.dwg | grep -q '"0",1,1,0,measured'

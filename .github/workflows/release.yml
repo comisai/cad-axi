@@ -1,0 +1,102 @@
+name: release
+# Publishes cad-axi to npm with signed provenance when a v* tag is pushed.
+# Comis installs an AXI only when its provenance names the source repository,
+# and npm provenance needs a public repository. Both engines are built and
+# tested on their native runners, put into one package, tested again as
+# built, and published from the `npm` environment, which deploys only from
+# release tags. The OIDC token (id-token: write) signs the provenance.
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+defaults:
+  run:
+    shell: bash
+jobs:
+  engine:
+    name: engine (${{ matrix.rid }})
+    strategy:
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Refuse a private repository
+        if: ${{ github.event.repository.private }}
+        run: |
+          echo "npm provenance needs a public repository."
+          exit 1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Tag matches package.json
+        run: test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}"
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: engine/global.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Native toolchain for NativeAOT
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends clang zlib1g-dev
+      - name: Build the engine with NativeAOT
+        working-directory: engine
+        run: |
+          dotnet restore --locked-mode
+          dotnet publish -c Release -r ${{ matrix.rid }} --no-restore -o out/${{ matrix.rid }}
+      - name: C library floor (Debian trixie has glibc 2.41)
+        run: |
+          newest=$(objdump -T engine/out/${{ matrix.rid }}/cad-axi-engine | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          test "$(printf '%s\nGLIBC_2.41\n' "$newest" | sort -V | tail -1)" = "GLIBC_2.41"
+      - name: Every test on this platform
+        run: |
+          npm ci --ignore-scripts
+          npm run typecheck
+          npm run lint
+          npm test
+          npm run test:contract
+          npm run test:write
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-${{ matrix.rid }}
+          path: engine/out/${{ matrix.rid }}/cad-axi-engine
+          if-no-files-found: error
+
+  publish:
+    needs: engine
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+          cache: npm
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-linux-x64
+          path: engine-bin/linux-x64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-linux-arm64
+          path: engine-bin/linux-arm64
+      - name: Build, assemble and test the package as built
+        run: |
+          npm ci --ignore-scripts
+          npm run build
+          node scripts/assemble-package.mjs engine-bin
+          node scripts/check-package.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+          mkdir -p engine/out/linux-x64 && cp engine-bin/linux-x64/cad-axi-engine engine/out/linux-x64/
+          chmod 755 engine/out/linux-x64/cad-axi-engine
+          npm run test:dist
+      - name: Publish with provenance
+        run: npm publish --provenance --access public --ignore-scripts
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

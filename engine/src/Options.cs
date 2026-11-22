@@ -6,6 +6,8 @@ internal sealed class Options
     public string? File { get; private set; }
     public string? Spec { get; private set; }
     public string? Out { get; private set; }
+    public string? Ops { get; private set; }
+    public string? As { get; private set; }
     public long MaxBytes { get; private set; } = 64L * 1024 * 1024;
     public int TimeLimitMs { get; private set; } = 120_000;
     public bool Entities { get; private set; }
@@ -20,6 +22,8 @@ internal sealed class Options
             {
                 case "--spec": o.Spec = Value(args, ref i); break;
                 case "--out": o.Out = Value(args, ref i); break;
+                case "--ops": o.Ops = Value(args, ref i); break;
+                case "--as": o.As = Value(args, ref i); break;
                 case "--max-bytes": o.MaxBytes = Number(args, ref i, 1, 256L * 1024 * 1024); break;
                 case "--time-limit-ms": o.TimeLimitMs = (int)Number(args, ref i, 1, 3_600_000); break;
                 case "--entities": o.Entities = true; break;
