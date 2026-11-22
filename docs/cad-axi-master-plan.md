@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Planning. The survey of open and closed DWG engines is done, and this repository and its plans are merged (comisai/cad-axi#1, 2026-11-22). No code yet; T2, the repository settings and CI, is next. |
+| Status | Engine proof passed (comisai/cad-axi#3, 2026-11-22): ACadSharp with NativeAOT holds on linux-x64 and linux-arm64 ([engine proof](engine-proof.md)). The private pass over the owner's DWG files waits for A2. Reading (M3) is next. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) (tasks T1 to T50, test plan, CI) |
@@ -28,8 +28,8 @@ Updated 2026-11-22.
 | --- | --- | --- |
 | Survey of DWG engines | **Done** | Design §4: every open and closed engine compared on licence, versions, write fidelity, text, security and packaging |
 | Repository and plans | **Done** | `comisai/cad-axi` is public under MIT; design, implementation plan and master plan merged in comisai/cad-axi#1 |
-| Repository settings and CI | Not started | T2 |
-| Engine proof | Not started | M2. A local probe during the survey built a NativeAOT linux-arm64 engine of about 9.6 MB that passed DWG and DXF round trips with Hebrew text; not repeated, not published |
+| Repository settings and CI | **Done** | CI on native x64 and arm64 runners since #3; branch protection, the tag rule and the npm environment applied after #3 |
+| Engine proof | **Done, except T10** | [Engine proof](engine-proof.md): 47 of 47 gates on each platform and 15 of 15 independent checks; Q1, Q2, Q5, Q6 and Q8 answered. T10 waits for A2 |
 | Reading (0.1) | Not started | M3 to M6 |
 | Comis pack | Not started | M7 and M8 |
 | Creating (0.2) | Not started | M9 |
@@ -53,8 +53,8 @@ A milestone is done only when its gate passes. Every gate is a command or a proo
 | ID | Milestone | Stream | Depends on | Exit gate | Status |
 | --- | --- | --- | --- | --- | --- |
 | M0 | Survey | — | — | Engines compared; a stack chosen with its reasons and its switch conditions | **Done 2026-11-22** |
-| M1 | Repository and plans | B | M0 | The plans merged; T2 settings in place | **In progress**: plans merged 2026-11-22 (#1); T2 next |
-| M2 | Engine proof | B, C | M1, A2 for T10 | Both NativeAOT binaries pass `probe` and `read` on the ACadSharp samples; limits hold; Q1, Q2, Q5, Q6 settled; the private pass over the owner's DWGs is written | Not started |
+| M1 | Repository and plans | B | M0 | The plans merged; T2 settings in place | **Done 2026-11-22** (#1, #3) |
+| M2 | Engine proof | B, C | M1, A2 for T10 | Both NativeAOT binaries pass `probe` and `read` on the ACadSharp samples; limits hold; Q1, Q2, Q5, Q6 settled; the private pass over the owner's DWGs is written | **Passed 2026-11-22 except T10** (#3; [engine proof](engine-proof.md)). T10 waits for A2 |
 | M3 | Reading core | B | M2 | `info`, `layers`, `blocks`, `texts` and `query` exact on the sample, on both platforms | Not started |
 | M4 | Measuring | B | M3 | `measure`, `runs`, `render`, `diff` and `check` exact on the sample; hostile set and independent producers pass | Not started |
 | M5 | Read qualification | C | M4, A2 | The live gate passes L1 to L6 and L9; the skill dry run passes | Not started |
@@ -91,7 +91,7 @@ flowchart LR
   classDef owner fill:#fff4d6,stroke:#b7791f;
 ```
 
-**Critical path, now:** A2 and M2. The engine proof decides whether the chosen stack holds on both platforms. Without the owner's DWG files, the reading tool can be built on made-up drawings but cannot pass its live gate.
+**Critical path, now:** M3 and A2. The engine proof showed the stack holds on both platforms. Reading can be built on made-up drawings now; without the owner's DWG files it cannot pass its live gate, and T10 stays open.
 
 ## 6. Schedule
 
@@ -193,5 +193,6 @@ After the first release, the token can be narrowed to this package or replaced b
 | `docs/cad-axi-design.md` | What and why: what DWG files hold, options, architecture, commands, behaviour, safety, the Comis changes |
 | `docs/cad-axi-implementation-plan.md` | How: layout, module contracts, the engine protocol, tasks T1 to T50, test plan, CI and release |
 | `docs/cad-axi-master-plan.md` | When and who: milestones, gates, owner actions, decisions, risks |
+| `docs/engine-proof.md` | M2's results: what the engine proof measured and what it changes |
 | `README.md` | What the tool is, its status, and its rules |
 | `NOTICE` | Credits and the trademark disclaimer |

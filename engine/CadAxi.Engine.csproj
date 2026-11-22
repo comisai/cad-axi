@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The cad-axi engine: reads and writes DWG and DXF with ACadSharp and
+       prints newline-delimited JSON records. Published with NativeAOT, one
+       binary per platform, so the workbench needs no .NET runtime. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>cad-axi-engine</AssemblyName>
+    <RootNamespace>CadAxi.Engine</RootNamespace>
+    <Version>0.0.0</Version>
+    <Deterministic>true</Deterministic>
+    <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
+    <!-- Both platforms in one lock file, so a locked restore works on each. -->
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <PublishAot>true</PublishAot>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <StripSymbols>true</StripSymbols>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="ACadSharp" Version="[3.8.35]" />
+    <!-- ACadSharp creates table entries by reflection. Without this root a
+         trimmed build fails at the first new CadDocument. -->
+    <TrimmerRootAssembly Include="ACadSharp" />
+  </ItemGroup>
+
+</Project>

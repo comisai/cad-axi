@@ -1,0 +1,24 @@
+{
+  "name": "cad-axi",
+  "version": "0.0.0",
+  "private": true,
+  "description": "A command-line tool that lets AI agents read, create and edit CAD drawings. Works with DWG and DXF files.",
+  "license": "MIT",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/comisai/cad-axi.git"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "bin": {
+    "cad-axi": "dist/bin/cad-axi.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "NOTICE"
+  ]
+}
