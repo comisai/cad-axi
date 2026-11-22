@@ -101,6 +101,8 @@ export interface SizedRun extends Run {
 export interface Placement {
   /** Labels that sized a run. */
   placed: number;
+  /** The run each placed label sized, by index. */
+  onRun: number[];
   /** Labels near runs of two groups, which sized neither. */
   shared: SizeLabel[];
   /** Labels with no run within reach. */
@@ -119,7 +121,7 @@ export function sizeRuns(
   reach: number,
 ): { runs: SizedRun[]; placement: Placement } {
   const votes = runs.map(() => new Map<string, string[]>());
-  const placement: Placement = { placed: 0, shared: [], missed: [] };
+  const placement: Placement = { placed: 0, onRun: [], shared: [], missed: [] };
   const groupCodes = new Map<string, string>();
   for (const r of runs) {
     const code = codeOf(r.group.replace(/[^A-Za-z]/g, '')) ?? '';
@@ -173,6 +175,7 @@ export function sizeRuns(
     list.push(label.text);
     v.set(label.size, list);
     placement.placed++;
+    placement.onRun.push(first.run);
   }
   const sized: SizedRun[] = runs.map((run, i) => {
     const v = votes[i] as Map<string, string[]>;
