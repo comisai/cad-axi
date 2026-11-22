@@ -1,0 +1,185 @@
+name: ci
+# The engine proof (implementation plan M2): the engine built with NativeAOT on
+# native x64 and arm64 runners, checked on made-up drawings and ACadSharp's
+# sample drawings, cross-checked by LibreDWG and ezdxf, and packed and
+# installed as npm would. LibreDWG and ezdxf run here only; nothing from them
+# ships.
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+defaults:
+  run:
+    # bash -eo pipefail, so a failing step is not hidden by `| tee`.
+    shell: bash
+jobs:
+  engine:
+    name: engine (${{ matrix.rid }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: engine/global.json
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - name: Native toolchain for NativeAOT
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends clang zlib1g-dev
+      - name: Restore in locked mode
+        working-directory: engine
+        run: dotnet restore --locked-mode -r ${{ matrix.rid }}
+      - name: Publish with NativeAOT
+        working-directory: engine
+        run: dotnet publish -c Release -r ${{ matrix.rid }} --no-restore -o out/${{ matrix.rid }}
+      - name: C library floor (Debian trixie has glibc 2.41)
+        run: |
+          bin=engine/out/${{ matrix.rid }}/cad-axi-engine
+          newest=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "Newest C library symbol: $newest" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$(printf '%s\nGLIBC_2.41\n' "$newest" | sort -V | tail -1)" = "GLIBC_2.41"
+      - name: Fetch ACadSharp's sample drawings
+        run: node scripts/fetch-samples.mjs "$RUNNER_TEMP/samples"
+      - name: Engine proof
+        run: >-
+          node scripts/engine-proof.mjs
+          --engine engine/out/${{ matrix.rid }}/cad-axi-engine
+          --work "$RUNNER_TEMP/proof"
+          --report proof-${{ matrix.rid }}.json
+          --samples "$RUNNER_TEMP/samples"
+          | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Keep what later jobs read
+        if: always()
+        run: |
+          mkdir -p keep/written
+          cp proof-${{ matrix.rid }}.json keep/ || true
+          cp "$RUNNER_TEMP"/proof/out/known-* keep/written/ || true
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: engine-${{ matrix.rid }}
+          path: engine/out/${{ matrix.rid }}/cad-axi-engine
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: proof-${{ matrix.rid }}
+          path: keep/
+
+  oracles:
+    name: independent checks
+    needs: engine
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: libredwg
+        with:
+          path: ~/libredwg
+          key: libredwg-0.14-62ebb73b-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('scripts/oracles/build-libredwg.sh') }}
+      - name: Build LibreDWG 0.14 from its pinned tarball
+        if: steps.libredwg.outputs.cache-hit != 'true'
+        run: bash scripts/oracles/build-libredwg.sh "$HOME/libredwg"
+      - name: ezdxf 1.4.5
+        run: python3 -m venv "$RUNNER_TEMP/venv" && "$RUNNER_TEMP/venv/bin/pip" install -q ezdxf==1.4.5
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-linux-x64
+          path: engine-bin
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: proof-linux-x64
+          path: proof
+      - name: Fetch ACadSharp's sample drawings
+        run: node scripts/fetch-samples.mjs "$RUNNER_TEMP/samples"
+      - name: Cross-check
+        run: |
+          chmod 755 engine-bin/cad-axi-engine
+          "$RUNNER_TEMP/venv/bin/python" scripts/oracles/make_hebrew_dxf.py "$RUNNER_TEMP/hebrew.dxf"
+          node scripts/oracles/cross-check.mjs \
+            --engine engine-bin/cad-axi-engine \
+            --libredwg "$HOME/libredwg/bin" \
+            --written proof/written \
+            --samples "$RUNNER_TEMP/samples" \
+            --hebrew-dxf "$RUNNER_TEMP/hebrew.dxf" \
+            --python "$RUNNER_TEMP/venv/bin/python" \
+            --work "$RUNNER_TEMP/oracle" \
+            --report oracle.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: oracle-report
+          path: oracle.json
+
+  package:
+    name: package
+    needs: engine
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-linux-x64
+          path: engine-bin/linux-x64
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: engine-linux-arm64
+          path: engine-bin/linux-arm64
+      - name: Assemble and check
+        run: |
+          node scripts/assemble-package.mjs engine-bin
+          node scripts/check-package.mjs | tee -a "$GITHUB_STEP_SUMMARY"
+          npm pack --ignore-scripts
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: package
+          path: cad-axi-0.0.0.tgz
+          if-no-files-found: error
+
+  install:
+    name: install (${{ matrix.rid }})
+    needs: package
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            rid: linux-x64
+          - runner: ubuntu-24.04-arm
+            rid: linux-arm64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: package
+          path: pkg
+      - name: Install the tarball in a clean folder and run it
+        run: |
+          mkdir clean && cd clean
+          npm init -y >/dev/null
+          npm install --ignore-scripts --no-audit --no-fund ../pkg/cad-axi-0.0.0.tgz
+          engine=node_modules/cad-axi/dist/engine/${{ matrix.rid }}/cad-axi-engine
+          mode=$(stat -c %a "$engine")
+          echo "Installed engine mode: $mode" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$mode" = 755
+          out=$(npx --no-install cad-axi)
+          echo "$out" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "$out" | grep -q '"platform":"${{ matrix.rid }}"'
