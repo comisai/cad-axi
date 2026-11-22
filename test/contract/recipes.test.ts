@@ -13,8 +13,8 @@ const text = readFileSync(
 const commands = [...text.matchAll(/```sh\n([\s\S]*?)```/g)].flatMap((m) =>
   (m[1] as string).split('\n').filter((l) => l.startsWith('cad-axi ')),
 );
-const json = [...text.matchAll(/with `([a-z]+\.json)`[^\n]*\n\n```json\n([\s\S]*?)```/g)].map((m) => [m[1] as string, m[2] as string]);
-  ...text.matchAll(/with `([a-z]+.json)`[^`]*```json\n([\s\S]*?)```/g),
+const json = [
+  ...text.matchAll(/with `([a-z]+\.json)`[^\n]*\n\n```json\n([\s\S]*?)```/g),
 ].map((m) => [m[1] as string, m[2] as string]);
 
 /** Split a command line as a shell would, for the simple quoting the recipes use. */
