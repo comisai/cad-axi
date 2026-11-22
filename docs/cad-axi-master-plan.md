@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Version 0.1 built (comisai/cad-axi#4, 2026-11-22): reading, measuring, creating and editing, with every write checked ([write matrix](write-matrix.md)). The release and the Comis pack follow. The live gates wait for A2, the AUDIT check for A5. |
+| Status | Version 0.1.0 released to npm with signed provenance (2026-11-22): reading, measuring, creating and editing, with every write checked ([write matrix](write-matrix.md)). The Comis pack entry is comisai/comis#4702. The live gates wait for A2, the AUDIT check for A5, a keyed Comis run for A6. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) (tasks T1 to T50, test plan, CI) |
@@ -31,7 +31,8 @@ Updated 2026-11-22.
 | Repository settings and CI | **Done** | CI on native x64 and arm64 runners since #3; branch protection, the tag rule and the npm environment applied after #3 |
 | Engine proof | **Done, except T10** | [Engine proof](engine-proof.md): 47 of 47 gates on each platform and 15 of 15 independent checks; Q1, Q2, Q5, Q6 and Q8 answered. T10 waits for A2 |
 | Reading (0.1) | **Built** | M3 and M4 gates pass on the sample on both platforms (#4); M5 waits for A2 |
-| Comis pack | Next | M7 and M8, after the release |
+| Release 0.1.0 | **Done** | `npm view cad-axi@0.1.0 dist.attestations` names `comisai/cad-axi`'s `release.yml` at `v0.1.0`; both engines are mode 0755 in the tarball; the install job runs it on x64 and arm64 |
+| Comis pack | **In review** | comisai/comis#4702: the apps pack pin, `drawing-takeoff` routing DWG and DXF, the new `drawing-edit` skill, decision D-new-159. M8's keyed run waits for A6 |
 | Creating | **Built, in 0.1** | `create` and `create --like`; every output read again and compared; LibreDWG and ezdxf read every output in CI. The AUDIT check waits for A5 |
 | Editing | **Built, in 0.1** | `edit` and `convert` behind the verified lists ([write matrix](write-matrix.md)); L7 and L8 wait for A2 and A5 |
 | Owner's DWG files | Not received | A2. The drawings used to qualify `drawing-axi` were PDFs; DWG files are needed for every live gate here |
@@ -110,7 +111,7 @@ These are estimates for one developer from 22 November 2026. They exclude review
 
 ## 7. Owner actions
 
-**A1. npm, once, about five minutes.** The release workflow publishes with a token and signs provenance with its own identity.
+**A1. npm, once, about five minutes.** Done 2026-11-22. The release workflow publishes with a token and signs provenance with its own identity.
 1. Sign in to npmjs.com with the account that owns `drawing-axi`.
 2. Create a granular access token with read and write access to **all packages**, so that it may create the new package name `cad-axi`. A token limited to existing packages cannot publish a new one.
 3. Store it as the `NPM_TOKEN` secret of this repository's `npm` environment: `gh secret set NPM_TOKEN --env npm --repo comisai/cad-axi`.
