@@ -10,7 +10,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>cad-axi-engine</AssemblyName>
     <RootNamespace>CadAxi.Engine</RootNamespace>
-    <Version>0.0.0</Version>
+    <!-- The engine carries the package's version, read from package.json. -->
+    <Version>$([System.Text.RegularExpressions.Regex]::Match($([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)../package.json')), '"version":\s*"([^"]+)"').Groups[1].Value)</Version>
     <Deterministic>true</Deterministic>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <!-- Both platforms in one lock file, so a locked restore works on each. -->
