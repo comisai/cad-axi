@@ -38,7 +38,7 @@ jobs:
         run: sudo apt-get update -qq && sudo apt-get install -y -qq --no-install-recommends clang zlib1g-dev
       - name: Restore in locked mode
         working-directory: engine
-        run: dotnet restore --locked-mode -r ${{ matrix.rid }}
+        run: dotnet restore --locked-mode
       - name: Publish with NativeAOT
         working-directory: engine
         run: dotnet publish -c Release -r ${{ matrix.rid }} --no-restore -o out/${{ matrix.rid }}
