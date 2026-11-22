@@ -249,7 +249,7 @@ A layer is named exactly, or without regard to case when that is unambiguous. `-
 `runs` and `measure --by-size` port `drawing-axi`'s run and size rules, which are pure functions:
 - Entities on the chosen layers are joined end to end within a gap, never across a corner that is not a shared end.
 - A size label (TEXT, MTEXT or an attribute) sizes the run it is written along, within a reach. In a PDF the reach is in millimetres on paper. In a DWG it is a multiple of the label's text height, which tracks the plotted size without knowing the plot scale. The default is to be tuned on real drawings and printed with every result.
-- A label with a system code sizes only runs in that code's group. A label that fits two groups about equally sizes neither and is listed as shared.
+- A label with a system code sizes only runs in that code's group. A label that fits runs of two layers about equally sizes neither and is counted as shared. Runs on every visible layer compete for a label, not only the layers asked for, so the answer does not depend on which layers a command names.
 - An unlabelled run stays unsized. The tool never guesses a size.
 
 ### 8.5 Pictures

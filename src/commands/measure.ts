@@ -94,7 +94,21 @@ function runsOf(
     name: g.name,
     pieces: pieces.filter((p) => g.layers.has(p.item.layer)),
   }));
-  const runs = findRuns(byGroup, gap);
+  // Runs on every other visible layer compete for the labels too, so a label
+  // as close to another layer's run sizes neither, whichever layers were
+  // asked for. They are never reported.
+  const others = new Map<string, Piece[]>();
+  for (const p of piecesOf(d, owners, region, { all }).pieces) {
+    if (layerSet.has(p.item.layer)) continue;
+    const list = others.get(p.item.layer) ?? [];
+    list.push(p);
+    others.set(p.item.layer, list);
+  }
+  const rivals = [...others].map(([name, list]) => ({
+    name: `${RIVAL}${name}`,
+    pieces: list,
+  }));
+  const found = findRuns([...byGroup, ...rivals], gap);
   const reach = positiveNumber(input.values, 'reach', 3, 100);
   const labels = sizeLabels(
     collectTexts(d, owners)
@@ -107,9 +121,24 @@ function runsOf(
         h: t.h,
       })),
   );
-  const sized = sizeRuns(runs, labels, reach);
-  return { ...sized, hidden, reach, region };
+  const sized = sizeRuns(found, labels, reach);
+  const asked = (run: { group: string }) => !run.group.startsWith(RIVAL);
+  const elsewhere = sized.placement.onRun.filter(
+    (i) => !asked(found[i] as Run),
+  ).length;
+  const runs = sized.runs
+    .filter(asked)
+    .map((run, i) => ({ ...run, id: i + 1 }));
+  const placement = {
+    ...sized.placement,
+    placed: sized.placement.placed - elsewhere,
+    elsewhere,
+  };
+  return { runs, placement, hidden, reach, region };
 }
+
+/** Marks the group of a layer that was not asked for: it only competes. */
+const RIVAL = '\u0000';
 
 export async function measure(input: CommandInput): Promise<string> {
   const { drawing: d } = await load(input, fileArg(input), true);
@@ -183,7 +212,7 @@ export async function measure(input: CommandInput): Promise<string> {
         space,
         lengths: unitNote,
         reach: `${r.reach} text heights`,
-        labels: `${r.placement.placed} placed, ${r.placement.shared.length} shared by two groups and left out, ${r.placement.missed.length} with no run in reach`,
+        labels: `${r.placement.placed} sized these runs, ${r.placement.shared.length} sat as close to runs of two layers and sized neither, ${r.placement.elsewhere} belong to runs of other layers, ${r.placement.missed.length} with no run in reach`,
         ...(r.hidden.entities
           ? {
               left_out: `${metres(r.hidden.length * factor)} m on layers that are off or frozen; --all includes them`,

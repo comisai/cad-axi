@@ -231,13 +231,44 @@ for (const file of ['plan.dwg', 'plan.dxf']) {
     it('measure --by size: totals by system and size, unsized apart', async () => {
       const doc = await ok('measure', file, '--by', 'size', '--layer', 'SAN');
       const rows = rowsOf(doc, 'sizes').map((r) => [r.size, r.length]);
-      // Alone, the sewer layer has no rival for the shared label.
+      // The shared label sits as close to a rain run, which competes for it
+      // even when only the sewer layer is asked for: it sizes neither.
       assert.deepEqual(rows, [
         ['Ø110', m(ANSWERS.runA)],
-        ['Ø90', 6],
         ['Ø160', 5],
-        ['unsized', 4],
+        ['unsized', 10],
       ]);
+      assert.match(String(doc.labels), /1 sat as close to runs of two layers/);
+    });
+
+    it('runs on one layer give the same sizes as runs on all of them', async () => {
+      const all = rowsOf(
+        await ok(
+          'runs',
+          file,
+          '--layer',
+          'SAN',
+          '--layer',
+          'RAIN',
+          '--layer',
+          'F',
+          '--layer',
+          'CW',
+        ),
+        'runs',
+      );
+      for (const layer of ['SAN', 'RAIN', 'F', 'CW']) {
+        const alone = rowsOf(await ok('runs', file, '--layer', layer), 'runs');
+        const sizes = (rows: Array<Record<string, unknown>>) =>
+          rows
+            .map((r) => [r.length, r.size, r.ends])
+            .sort((a, b) => String(a).localeCompare(String(b)));
+        assert.deepEqual(
+          sizes(alone),
+          sizes(all.filter((r) => r.group === layer)),
+          layer,
+        );
+      }
     });
 
     it('check: a fresh read holds together', async () => {
