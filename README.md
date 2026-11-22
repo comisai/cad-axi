@@ -12,7 +12,7 @@ cad-axi is an AXI, an [agent experience interface](https://axi.md). Every comman
 
 It is built to run inside Comis, next to [`drawing-axi`](https://github.com/comisai/drawing-axi), which reads drawings plotted to PDF. It also works on its own.
 
-> **Status:** design. There is no code yet. The plans are in `docs/`:
+> **Status:** the engine is proved; the commands are not built yet. The [engine proof](docs/engine-proof.md) built the engine for linux-x64 and linux-arm64 and checked it on made-up drawings and on ACadSharp's sample drawings, with LibreDWG and ezdxf as independent readers. The plans are in `docs/`:
 > - [Design](docs/cad-axi-design.md): what DWG files hold, the options, the architecture, the commands and how writes are kept safe.
 > - [Implementation plan](docs/cad-axi-implementation-plan.md): layout, module contracts, the engine protocol, tasks, tests, CI and release.
 > - [Master plan](docs/cad-axi-master-plan.md): milestones, gates, owner actions, decisions and risks.

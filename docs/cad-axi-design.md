@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Draft. No code yet. Phase 0, the engine proof, comes first ([master plan](cad-axi-master-plan.md)). |
+| Status | Draft. Phase 0, the engine proof, passed on both platforms ([engine proof](engine-proof.md)); its findings are in §8.10 and §15. Reading comes next ([master plan](cad-axi-master-plan.md)). |
 | Date | 2026-11-22 |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) |
 | Master plan | [`cad-axi-master-plan.md`](cad-axi-master-plan.md) |
@@ -324,7 +324,7 @@ A message never echoes a path, flag or value it was given. Exit code 2 means usa
 | --- | --- | --- |
 | Input size | 64 MiB, `--max-bytes` up to 256 MiB | Comis accepts files up to 20,000,000 bytes from the owner |
 | Entities | 2,000,000 | Bounds the model |
-| Engine heap | 1 GiB, through the runtime's own heap limit | An address-space limit breaks a managed runtime's reservations |
+| Engine heap | From the workbench's memory limit, leaving room for Node, through `DOTNET_GCHeapHardLimit` written as hex without `0x` | An address-space limit breaks a managed runtime's reservations. The engine proof measured about 2.5 KB per entity: 1 GiB would refuse drawings over about 350,000 simple entities |
 | Engine time | The earlier of `COMIS_DEADLINE` and 120 s | A file must never run forever |
 | Block nesting | 16 | Bounds transforms and cycles |
 | Output | 20,000,000 bytes | The Comis file limit |
@@ -449,14 +449,14 @@ This section reports what sources say. It is not legal advice.
 
 | ID | Question or risk | Plan |
 | --- | --- | --- |
-| Q1 | Does a NativeAOT linux-x64 build work? Only arm64 was probed | Phase 0 builds both on native runners |
-| Q2 | Does Hebrew in code page 1255 read correctly from an R2000 DWG? Only AC1032 was probed | Phase 0 fixture; a gate for 0.1 |
+| Q1 | Does a NativeAOT linux-x64 build work? | **Settled: yes**, 10.1 MB on x64 and 10.5 MB on arm64, about 5 ms to start ([engine proof](engine-proof.md)) |
+| Q2 | Does Hebrew in code page 1255 read correctly from an R2000 DWG? | **Settled for ACadSharp's own output**, confirmed by LibreDWG and ezdxf; an AutoCAD-written file needs A2. Characters outside the code page become `?` |
 | Q3 | Will AutoCAD open ACadSharp 3.8 output without recovery? The evidence is issue reports | The human check per release; L8 |
 | Q4 | May ODA File Converter run in this repository's CI under its personal licence? | Owner decision; until then, not used |
-| Q5 | Does ACadSharp expose header dates and identifiers, so writes can be repeatable? | Phase 0 |
-| Q6 | Does the runtime's heap limit work in a NativeAOT binary through the environment? | Phase 0 |
+| Q5 | Can writes be repeatable? | **Settled:** DXF is byte-identical; DWG differs only in two GUIDs ACadSharp makes read-only. The verify loop compares content |
+| Q6 | Does the runtime's heap limit work in a NativeAOT binary through the environment? | **Settled: yes**, as hex without `0x`; with `0x` it is ignored |
 | Q7 | How do the owner's DWG files store pipes: polylines on layers, blocks, or vertical-product objects? | Phase 0 private pass over the owner's files |
-| Q8 | How long and how much memory do 20 MB drawings take? The only figure found is about 27 s and 2.8 GB for a 46 MB file, with another engine ([dwg2png](https://github.com/diskd-ai/dwg2png)) | Phase 0 measures |
+| Q8 | How long and how much memory do 20 MB drawings take? | **Measured on made-up drawings:** a 20.6 MB DWG of 1.1 million simple entities reads in 14 to 15 s with a 2.6 to 2.8 GiB peak. Real drawings at A2 |
 | Q9 | Does the Comis pack build keep the engine executable? | C8 |
 | Q10 | ACadSharp has one main author | The protocol and tests allow a switch (§4.2) |
 | Q11 | A written file is taken for a checked one | Every write is a draft; the skill says so; AUDIT before relying on it |

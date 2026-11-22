@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | T1 done: the repository and these plans (comisai/cad-axi#1, 2026-11-22). T2 is next. |
+| Status | T1 to T9 done (comisai/cad-axi#1 and #3, 2026-11-22); results in [`engine-proof.md`](engine-proof.md). T10 waits for the owner's DWG files. M3 is next. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Master plan | [`cad-axi-master-plan.md`](cad-axi-master-plan.md) (milestones, gates, owner actions) |
@@ -127,20 +127,20 @@ Rules:
 | Task | What | Done when |
 | --- | --- | --- |
 | T1 | Repository, licence, README, NOTICE, security policy, contributing guide, code of conduct, pull request template, design, this plan, master plan | Merged to `main`: **done** (#1) |
-| T2 | Repository settings, with the first CI workflow: `main` needs a pull request and green checks; `v*` tags admin-only; an `npm` environment that deploys only from tags; Dependabot for npm, NuGet and GitHub Actions; issue templates; `CODEOWNERS` | A pull request without checks cannot merge; a non-admin cannot push a `v*` tag |
+| T2 | Repository settings, with the first CI workflow: `main` needs a pull request and green checks; `v*` tags admin-only; an `npm` environment that deploys only from tags; Dependabot for npm, NuGet and GitHub Actions; issue templates; `CODEOWNERS` | A pull request without checks cannot merge; a non-admin cannot push a `v*` tag: **done** (#3 and the settings after it) |
 
 ### M2: engine proof (design phase 0)
 
 | Task | What | Done when |
 | --- | --- | --- |
-| T3 | Engine project: `global.json`, locked restore of a pinned ACadSharp, the `probe` verb | `dotnet publish` works offline after restore; `probe` prints versions |
-| T4 | NativeAOT builds in CI on `ubuntu-24.04` and `ubuntu-24.04-arm`, with ACadSharp rooted | Both binaries run `probe`; size, start time and the newest C library symbol are recorded; the symbol is no newer than Debian trixie's |
-| T5 | The smallest `read`: header, layers, entity counts, class census | Every ACadSharp sample drawing reads on both platforms with the expected counts |
-| T6 | Limits: input cap, heap limit through the runtime's environment setting, time limit, kill | A drawing built to exhaust memory ends in `too_large` or `timed_out`, never an out-of-memory kill of the parent; settles Q6 |
-| T7 | Header fields for repeatable writes | Two writes of the same specification give the same bytes, or the reason they cannot is recorded; settles Q5 |
-| T8 | Hebrew in code page 1255 in an AC1015 DWG, made by ACadSharp and by LibreDWG `dxf2dwg` | The text reads back correctly from both; settles Q2 |
-| T9 | Packaging probe: `npm pack` with both engines, installed in a clean folder on each platform | The engine is mode 0755 after install and runs; the tarball is under 30 MB |
-| T10 | Private pass over the owner's DWGs (needs A2) | A private report: files that open, versions, units, opaque classes, time and memory per file; settles Q7 and Q8 |
+| T3 | Engine project: `global.json`, locked restore of a pinned ACadSharp, the `probe` verb | `dotnet publish` works offline after restore; `probe` prints versions: **done** |
+| T4 | NativeAOT builds in CI on `ubuntu-24.04` and `ubuntu-24.04-arm`, with ACadSharp rooted | Both binaries run `probe`; size, start time and the newest C library symbol are recorded; the symbol is no newer than Debian trixie's: **done** (10.1 and 10.5 MB, about 5 ms, `GLIBC_2.38`) |
+| T5 | The smallest `read`: header, layers, entity counts, class census | Every ACadSharp sample drawing reads on both platforms with the expected counts: **done** (341 entities each; LibreDWG agrees on simple kinds) |
+| T6 | Limits: input cap, heap limit through the runtime's environment setting, time limit, kill | A drawing built to exhaust memory ends in `too_large` or `timed_out`, never an out-of-memory kill of the parent; settles Q6: **done** (hex without `0x`) |
+| T7 | Header fields for repeatable writes | Two writes of the same specification give the same bytes, or the reason they cannot is recorded; settles Q5: **done** (DXF identical; DWG differs in two read-only GUIDs) |
+| T8 | Hebrew in code page 1255 in an AC1015 DWG, made by ACadSharp and by LibreDWG `dxf2dwg` | The text reads back correctly from both; settles Q2: **done for ACadSharp and ezdxf**; LibreDWG 0.14's DWG output cannot be read by ACadSharp, so an AutoCAD-written file (A2) remains |
+| T9 | Packaging probe: `npm pack` with both engines, installed in a clean folder on each platform | The engine is mode 0755 after install and runs; the tarball is under 30 MB: **done** (9.2 MiB) |
+| T10 | Private pass over the owner's DWGs (needs A2) | A private report: files that open, versions, units, opaque classes, time and memory per file; settles Q7 and Q8: **waits for A2**; Q8 measured on made-up drawings |
 
 ### M3: reading
 

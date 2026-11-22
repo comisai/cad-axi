@@ -1,6 +1,18 @@
 # Contributing to cad-axi
 
-Thank you for helping. cad-axi is at the design stage: there is no code yet. The plans in `docs/` say what will be built and in what order.
+Thank you for helping. cad-axi has its engine and its engine proof; the commands are not built yet. The plans in `docs/` say what will be built and in what order.
+
+## Building the engine
+
+The engine is C# on ACadSharp, published with NativeAOT. You need the .NET SDK pinned in `engine/global.json`, and clang and zlib for NativeAOT. Without them locally, `scripts/engine-dev.Dockerfile` builds an image that has them:
+
+```sh
+cd engine
+dotnet restore --locked-mode
+dotnet publish -c Release -r linux-x64 --no-restore -o out/linux-x64     # or linux-arm64
+node ../scripts/fetch-samples.mjs /tmp/samples
+node ../scripts/engine-proof.mjs --engine out/linux-x64/cad-axi-engine --work /tmp/proof --report /tmp/proof.json --samples /tmp/samples
+```
 
 ## Before you start
 
