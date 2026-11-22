@@ -15,7 +15,7 @@ const commands = [...text.matchAll(/```sh\n([\s\S]*?)```/g)].flatMap((m) =>
 );
 const json = [
   ...text.matchAll(/with `([a-z]+\.json)`[^\n]*\n\n```json\n([\s\S]*?)```/g),
-].map((m) => [m[1] as string, m[2] as string]);
+].map((m) => [m[1] as string, m[2] as string] as const);
 
 /** Split a command line as a shell would, for the simple quoting the recipes use. */
 const words = (line: string) =>
