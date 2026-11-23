@@ -32,13 +32,15 @@ It runs on Linux on x64 and arm64, with Node 22.18 or later and glibc 2.38 or la
 
 A TypeScript front end runs the commands. A small engine, compiled ahead of time from the MIT-licensed [ACadSharp](https://github.com/DomCR/ACadSharp) library, reads and writes the files. The front end starts the engine as a separate process, under a memory cap and a time limit, for each command, and does all measuring and formatting itself.
 
+`cad-axi-engine` is internal to the package. Use the `cad-axi` commands below for drawing data.
+
 ```text
 cad-axi                                  home view: the DWG and DXF files in this folder
 cad-axi info <file>                      version, units, counts, external references, what cannot be read
 cad-axi layers <file>                    layers with their state, entity count and total length
 cad-axi blocks <file>                    blocks with insert counts and attribute tags
 cad-axi texts <file>                     the text on the drawing, decoded, with the stored form kept
-cad-axi query <file>                     entities by type, layer, block, area or handle
+cad-axi query <file>                     entities by type, layer, block, area or handle, and counts of named blocks
 cad-axi measure <file>                   length by layer, linetype, colour, named group or pipe size
 cad-axi runs <file> --layer L            connected runs with the size labels beside them
 cad-axi render <file> --out f.svg        a picture to look at
@@ -56,6 +58,10 @@ cad-axi version                          the package, engine and ACadSharp versi
 `cad-axi info <file>` shows the declared insertion units, dimension measurements and text, viewport ratios, and reference scales. When the drawing states no unit, confirm it from the evidence or with the drawing owner and pass `--units`. Takeoff lengths are printed in metres once the unit is known.
 
 `cad-axi info <file> --full` lists external drawing references with their filenames and folders relative to the host drawing where known. It reads the reference metadata from the host drawing. `cad-axi texts <file> --full` shows the raw text and identifies legacy Hebrew decoding.
+
+Repeat `--block` and `--region` in one `cad-axi query` to extract inserts across several regions in one read. Add `--count` for a count per block and region, including zeros. `cad-axi query <file> --type INSERT --full` shows each matching insert with separate block and X/Y/Z scale fields. See the [recipes](docs/recipes.md) for examples.
+
+`cad-axi create` reports the layer count from the written drawing, including layer `0`.
 
 ## Rules it keeps
 

@@ -128,6 +128,7 @@ export interface DxfLayer {
   off?: boolean;
   frozen?: boolean;
   locked?: boolean;
+  dependent?: boolean;
 }
 
 export interface DxfDrawing {
@@ -356,7 +357,7 @@ export function writeDxf(d: DxfDrawing): Buffer {
     for (const l of layers) {
       entry('LAYER', 'AcDbLayerTableRecord', tables.LAYER as string);
       o.g(2, l.name);
-      o.g(70, (l.frozen ? 1 : 0) | (l.locked ? 4 : 0));
+      o.g(70, (l.frozen ? 1 : 0) | (l.locked ? 4 : 0) | (l.dependent ? 16 : 0));
       o.g(62, l.off ? -l.color : l.color);
       o.g(6, l.linetype ?? 'Continuous');
       o.g(370, -3);

@@ -195,7 +195,7 @@ Streaming keeps the front end's memory bounded. It reduces records as they arriv
 | `layers <file>` | Name, state (on, off, frozen, locked), colour, linetype, entity count and total length |
 | `blocks <file>` | Block definitions with insert counts and attribute tags |
 | `texts <file>` | TEXT, MTEXT and attribute values with handle, layer and position. `--layer`, `--match`, `--region` |
-| `query <file>` | Entities by `--type`, `--layer`, `--block`, `--region` or `--handle`. The source of every handle an edit names |
+| `query <file>` | Entities by `--type`, `--layer`, `--block`, `--region` or `--handle`, with X/Y/Z scales for inserts. The source of every handle an edit names. `--count` totals INSERT entities per named block and region |
 | `measure <file>` | Length by layer, linetype or colour, or by caller-named groups (`--group name=LAYER+LAYER`), with the part inside block inserts shown apart |
 | `runs <file> --layer …` | Connected runs, joined end to end, with the size labels beside them |
 | `render <file> --out x.svg` | A picture of model space or one layout, optionally one region and some layers |
@@ -225,6 +225,8 @@ A layer is named exactly, or without regard to case when that is unambiguous. `-
 - A read that returns no entities from a file that is not empty is an error, not an empty drawing. LibreDWG's history shows why: a failed read there can exit 0 with no objects ([LibreDWG #1522](https://github.com/LibreDWG/libredwg/issues/1522)).
 - Frozen and off layers are read and reported. `measure` and `runs` leave them out unless `--all` is given, and say how much they left out.
 - Model space is the default. Paper space layouts are listed by `info` and chosen with `--space`.
+- `query` and `measure` check flag values that are independent of the drawing before opening it. Each command reads the drawing once.
+- Repeat `--block` and `--region` with `query` to extract entities in the union of the regions. With `--count`, each named block and region pair gets a row, including zero counts. This counts INSERT entities directly in the chosen space by their insertion points, including the box boundaries. An insert in two overlapping regions counts once in each. With no regions, there is one count per block for the chosen space.
 
 ### 8.2 Geometry and measuring
 
@@ -270,7 +272,7 @@ A layer is named exactly, or without regard to case when that is unambiguous. `-
 - **The specification** names units, layers (name, colour, linetype), text styles and a list of entities in the same grammar edits use (§8.8): lines, polylines with bulges, circles, arcs, text, MTEXT and inserts of blocks the specification defines.
 - **Validation** comes first: a bounded number of entities, finite coordinates within ±1e9 drawing units, text at most 2,000 code points, valid layer names, known linetypes. A specification can never add an external reference, image, OLE object, field, data link or network path.
 - **`--like <file>`** copies units, layers, linetypes and text styles from a source drawing. The result lies in the source's coordinates, so the owner can insert it over their own drawing. This is the overlay (§8.8).
-- **Output** is AC1032 DWG by default, or DXF by the output's name.
+- **Output** is AC1032 DWG by default, or DXF by the output's name. The result reports the layer count from the readback, including layer `0`.
 
 ### 8.8 Editing
 
@@ -341,7 +343,7 @@ Text from a file reaches a model. As in `drawing-axi`: control characters and bi
 
 DWG parsing has a long bug record in every implementation. ODA's advisory page lists 52 entries ([ODA advisories](https://opendesign.com/security-advisories)). On 2026-11-17 Autodesk fixed AutoCAD flaws that include an Excel data link that "can cause AutoCAD to execute an attacker-controlled program" and external-reference paths that leak Windows credentials ([ADSK-SA-2026-0021](https://www.autodesk.com/trust/security-advisories/adsk-sa-2026-0021)). The recurring bug sites are decompression and page maps in AC1018 and later, counts in the file that drive allocations, preview images, string conversion, graph cycles and active content.
 
-- The engine runs as a child process with an input cap, a heap cap, a time limit and a hard kill at the deadline, inside a workbench that already has no network.
+- `cad-axi-engine` is an internal binary. The CLI runs it as a child process with an input cap, a heap cap, a time limit and a hard kill at the deadline, inside a workbench that already has no network.
 - Preview images are not decoded.
 - The tool never resolves external references, images, OLE objects, data links or UNC paths. It lists them as metadata. When a source carries them, `info` and every write record say so, because an edited copy passes them on to the owner's CAD.
 - `info` and `blocks --full` show the reference filename and a lexical host-relative folder when the saved location supplies one. A same-folder reference uses `.`. An absolute Linux path inside the host folder can be made relative to it. Other absolute references show the filename, with no folder. The engine reads these values from the host drawing without opening the destination.

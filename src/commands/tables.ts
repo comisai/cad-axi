@@ -2,8 +2,19 @@
 
 import type { CommandInput } from '../cli/table.ts';
 import { AxiError, usage } from '../errors.ts';
-import { type Drawing, type Entity, layoutOf } from '../model/drawing.ts';
-import { apply, lengthIn, ocs, primLength } from '../model/geometry.ts';
+import {
+  type Drawing,
+  type Entity,
+  layoutOf,
+  type P3,
+} from '../model/drawing.ts';
+import {
+  apply,
+  type Box,
+  lengthIn,
+  ocs,
+  primLength,
+} from '../model/geometry.ts';
 import { collectTexts, type TextItem } from '../model/texts.ts';
 import { insertScale, viewportScale } from '../model/unit-evidence.ts';
 import { metres, unitsOf } from '../model/units.ts';
@@ -22,6 +33,7 @@ import {
   layerState,
   list,
   load,
+  parseBox,
   pickLayer,
   positiveInt,
   regionOf,
@@ -292,7 +304,7 @@ function anchor(e: Entity): readonly number[] | undefined {
   if (e.a) return e.a;
   if (e.c) return e.c;
   if (e.at)
-    return e.kind === 'TEXT' || e.kind === 'ATTDEF'
+    return e.kind === 'TEXT' || e.kind === 'ATTDEF' || e.kind === 'INSERT'
       ? apply(ocs(e.n), e.at)
       : e.at;
   const p = e.pts?.[0];
@@ -305,18 +317,18 @@ function detail(
   e: Entity,
   length: number | null,
   z: string,
+  scale: P3 | undefined,
 ): string | null {
   if (length !== null && e.kind !== 'CIRCLE')
     return `length ${round(length, 3)}${z}`;
   if (e.kind === 'CIRCLE' && e.r !== undefined)
     return `radius ${round(e.r, 3)}${z}`;
   if (e.kind === 'INSERT') {
-    const scale = insertScale(e);
     const block = e.block ? d.blocks.get(e.block) : undefined;
     const units = unitsOf(block?.units ?? 0, undefined).name ?? 'not stated';
     return [
-      `block ${e.block ?? ''}`,
       ...(scale ? [`scale ${scale.join(',')}`] : []),
+      `block ${e.block ?? ''}`,
       ...(block?.external ? [`reference units ${units}`] : []),
       ...(e.attribs?.length ? [`${e.attribs.length} attributes`] : []),
     ].join(', ');
@@ -356,57 +368,92 @@ function detail(
   return null;
 }
 
-export async function query(input: CommandInput): Promise<string> {
-  const { drawing: d } = await load(input, fileArg(input), true);
-  const { owners, name: space } = spaceOf(d, input.values, true);
-  const region = regionOf(input.values);
-  const types = new Set(list(input.values, 'type').map((t) => t.toUpperCase()));
-  const wanted = new Set(
-    list(input.values, 'layer').map((l) => pickLayer(d, l)),
+function insideBox(p: readonly number[] | undefined, box: Box): boolean {
+  const [x, y] = p ?? [];
+  return (
+    x !== undefined &&
+    y !== undefined &&
+    x >= box.x0 &&
+    x <= box.x1 &&
+    y >= box.y0 &&
+    y <= box.y1
   );
-  const blocks = list(input.values, 'block');
-  for (const b of blocks)
-    if (!d.blocks.has(b))
-      throw new AxiError(
-        'unknown_block',
-        'The drawing defines no block by that name. Run `cad-axi blocks <file>` for the names.',
-      );
+}
+
+// Count mode can return a row for every block and region pair, even for an empty drawing.
+const MAX_BLOCK_COUNTS = 100_000;
+
+export async function query(input: CommandInput): Promise<string> {
+  const limit = positiveInt(input.values, 'limit', 20);
+  const full = input.values.full === true;
+  const count = input.values.count === true;
+  const blocks = new Set(list(input.values, 'block'));
+  const regions = [...new Set(list(input.values, 'region'))].map((region) => ({
+    region,
+    box: parseBox(region, 'region'),
+  }));
+  if (count && !blocks.size)
+    throw usage('--count needs at least one --block <name>.');
+  if (count && blocks.size * Math.max(1, regions.length) > MAX_BLOCK_COUNTS)
+    throw usage(
+      `--count takes up to ${MAX_BLOCK_COUNTS} block and region pairs.`,
+    );
+  const types = new Set(list(input.values, 'type').map((t) => t.toUpperCase()));
+  const layers = list(input.values, 'layer');
+  if (layers.some((layer) => !layer.trim()))
+    throw usage('A layer name is missing.');
   const handles = new Set(
     list(input.values, 'handle').map((h) => h.toUpperCase()),
   );
   for (const h of handles)
     if (!/^[0-9A-F]{1,16}$/.test(h))
       throw usage('--handle takes a hexadecimal handle, as `query` prints it.');
-  const rows: Row[] = [];
+  const { drawing: d } = await load(input, fileArg(input), true);
+  const { owners, name: space } = spaceOf(d, input.values, true);
+  const wanted = new Set(layers.map((l) => pickLayer(d, l)));
+  for (const b of blocks)
+    if (!d.blocks.has(b))
+      throw new AxiError(
+        'unknown_block',
+        'The drawing defines no block by that name. Run `cad-axi blocks <file>` for the names.',
+      );
+  const countRegions = count
+    ? (regions.length ? regions : [{ region: null, box: null }]).map((r) => ({
+        ...r,
+        counts: new Map<string, number>(),
+      }))
+    : [];
+  const missingHandles = new Set(handles);
+  const rows: Array<Row & { scale?: P3 | undefined }> = [];
   const spatial = input.values['3d'] === true;
-  for (const item of walk(d, owners)) {
-    if (item.depth > 0) continue;
+  for (const item of walk(d, owners, { inserts: false })) {
     const e = item.e;
     if (types.size && !types.has(e.kind)) continue;
     if (wanted.size && !wanted.has(e.layer)) continue;
-    if (
-      blocks.length &&
-      !(e.kind === 'INSERT' && e.block && blocks.includes(e.block))
-    )
+    if (blocks.size && !(e.kind === 'INSERT' && e.block && blocks.has(e.block)))
       continue;
     if (handles.size && !handles.has(e.h)) continue;
+    const p = anchor(e);
+    if (count && e.block) {
+      for (const { box, counts } of countRegions) {
+        if (box && !insideBox(p, box)) continue;
+        counts.set(e.block, (counts.get(e.block) ?? 0) + 1);
+        missingHandles.delete(e.h);
+      }
+      continue;
+    }
     const prims = CURVES.has(e.kind) ? worldPrims(item) : [];
+    if (
+      regions.length &&
+      !regions.some(
+        ({ box }) =>
+          insideBox(p, box) || prims.some((q) => lengthIn(q, box, true) > 0),
+      )
+    )
+      continue;
     const length = prims.length
       ? prims.reduce((s, p) => s + primLength(p, spatial), 0)
       : null;
-    const p = anchor(e);
-    if (region) {
-      const inside =
-        p &&
-        p[0] !== undefined &&
-        p[1] !== undefined &&
-        p[0] >= region.x0 &&
-        p[0] <= region.x1 &&
-        p[1] >= region.y0 &&
-        p[1] <= region.y1;
-      const crosses = prims.some((q) => lengthIn(q, region, true) > 0);
-      if (!inside && !crosses) continue;
-    }
     const z =
       length === null
         ? {}
@@ -416,6 +463,7 @@ export async function query(input: CommandInput): Promise<string> {
               spatial ? prims.reduce((s, p) => s + primLength(p), 0) : length,
             ),
           );
+    const scale = e.kind === 'INSERT' ? insertScale(e) : undefined;
     rows.push({
       h: e.h,
       kind: e.kind,
@@ -428,18 +476,46 @@ export async function query(input: CommandInput): Promise<string> {
         z.z_span === undefined
           ? ''
           : `, Z span ${round(z.z_span, 3)}${z.z_dominant_entities ? ' (Z-dominant)' : ''}`,
+        scale,
       ),
+      ...(e.kind === 'INSERT' ? { block: e.block, scale } : {}),
+    });
+    missingHandles.delete(e.h);
+  }
+  if (missingHandles.size)
+    throw new AxiError(
+      'unknown_handle',
+      'No entity of that space has that handle. Run `cad-axi query <file>` for handles.',
+    );
+  if (count) {
+    const counts = countRegions.flatMap(({ region, counts }) =>
+      [...blocks].map((block) => ({
+        block,
+        region,
+        inserts: counts.get(block) ?? 0,
+      })),
+    );
+    const shown = full ? counts : counts.slice(0, limit);
+    const saved = save(input.io, str(input.values, 'save'), {
+      block_counts: counts,
+    });
+    return listOutput({
+      key: 'block_counts',
+      summary: `${shown.length} of ${counts.length} block count rows`,
+      head: { space, ...(saved ? { saved } : {}) },
+      rows: shown,
+      columns: ['block', 'region', 'inserts'],
+      help: [
+        'Run `cad-axi query <file> --block <name>` for individual inserts',
+      ],
+      full,
+      narrower: '--block, --region or --limit',
     });
   }
-  for (const h of handles)
-    if (!rows.some((r) => r.h === h))
-      throw new AxiError(
-        'unknown_handle',
-        'No entity of that space has that handle. Run `cad-axi query <file>` for handles.',
-      );
-  const full = input.values.full === true;
-  const limit = positiveInt(input.values, 'limit', 20);
   const shown = full ? rows : rows.slice(0, limit);
+  const columns = ['h', 'kind', 'layer', 'at', 'detail'];
+  const showInsertFields = full && shown.some((r) => r.kind === 'INSERT');
+  if (showInsertFields) columns.push('block', 'scale');
   const length_mode = lengthMode(spatial);
   const saved = save(input.io, str(input.values, 'save'), {
     length_mode,
@@ -451,8 +527,10 @@ export async function query(input: CommandInput): Promise<string> {
       ? `${shown.length} of ${rows.length} entities`
       : '0 entities match',
     head: { space, length_mode, ...(saved ? { saved } : {}) },
-    rows: shown,
-    columns: ['h', 'kind', 'layer', 'at', 'detail'],
+    rows: showInsertFields
+      ? shown.map((r) => (r.scale ? { ...r, scale: r.scale.join(',') } : r))
+      : shown,
+    columns,
     help: rows.length
       ? [
           'Run `cad-axi query <file> --handle <h>` for one entity',

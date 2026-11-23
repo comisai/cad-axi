@@ -52,7 +52,7 @@ export interface Units {
 
 export function unitsOf(insunits: number, given: string | undefined): Units {
   if (given !== undefined) {
-    const m = GIVEN[given];
+    const m = Object.hasOwn(GIVEN, given) ? GIVEN[given] : undefined;
     if (m === undefined) throw usage('--units takes mm, cm, m, in or ft.');
     return { name: given, metres: m, basis: 'given' };
   }

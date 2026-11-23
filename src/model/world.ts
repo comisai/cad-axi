@@ -29,6 +29,8 @@ export interface WorldItem {
 }
 
 export interface WalkOptions {
+  /** Set false to visit only the entities stored directly in the spaces. */
+  inserts?: boolean;
   /** Open the drawing blocks of dimensions too (for pictures). */
   dimensions?: boolean;
 }
@@ -87,7 +89,7 @@ export function* walk(
       const hidden = off(layer) || (parent?.frozen ?? false);
       yield { e, m, layer, linetype, color, depth, insert, block, hidden };
       const name =
-        e.kind === 'INSERT'
+        e.kind === 'INSERT' && options.inserts !== false
           ? e.block
           : e.kind === 'DIMENSION' && options.dimensions
             ? e.block
