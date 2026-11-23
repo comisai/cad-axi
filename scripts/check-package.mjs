@@ -24,7 +24,7 @@ const executable = required.filter((p) => p.startsWith('dist/'));
 const problems = [];
 for (const p of required) if (!files.has(p)) problems.push(`missing ${p}`);
 for (const p of files.keys())
-  if (!required.includes(p) && !/^dist\/(?!engine\/)[a-z/]+\.js$/.test(p))
+  if (!required.includes(p) && !/^dist\/(?!engine\/)[a-z/-]+\.js$/.test(p))
     problems.push(`unexpected ${p}`);
 for (const p of executable) {
   const mode = files.get(p)?.mode;

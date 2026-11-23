@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using ACadSharp;
+using ACadSharp.Blocks;
 using ACadSharp.Entities;
 using ACadSharp.IO;
 using ACadSharp.Objects;
@@ -10,7 +11,8 @@ namespace CadAxi.Engine;
 
 // The read verb. Records, in order: header; linetypes, styles, layers and
 // blocks with their entity counts; external references and images as
-// metadata; with --entities, one record per entity; then entity kinds, the
+// metadata; with --entities, one record per entity, or with --unit-evidence,
+// just the dimensions, viewports and references in layouts; then entity kinds, the
 // class census, non-graphical objects, and an end record with counts.
 internal static class Reader
 {
@@ -66,7 +68,7 @@ internal static class Reader
         var doc = Open(o, out var kind, out var errors, out var warnings);
         Census census;
         // A model that cannot be walked is a damaged file, not an engine fault.
-        try { census = Emit(rec, doc, kind, o.Entities); }
+        try { census = Emit(rec, doc, kind, o.Entities, o.UnitEvidence); }
         catch (EngineError) { throw; }
         catch (OutOfMemoryException) { throw new EngineError("too_large"); }
         catch (Exception x) { throw new EngineError("damaged", x.GetType().Name); }
@@ -82,7 +84,7 @@ internal static class Reader
         public long UnknownObjects;
     }
 
-    public static Census Emit(Records rec, CadDocument doc, string kind, bool entities)
+    private static Census Emit(Records rec, CadDocument doc, string kind, bool entities, bool unitEvidence)
     {
         // First pass: counts by layer and by block, and the kinds.
         var byLayer = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -180,15 +182,13 @@ internal static class Reader
             rec.Write("block", w =>
             {
                 var flags = b.Flags;
-                var external = flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRef)
-                    || flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefOverlay);
                 w.WriteString("name", b.Name);
                 Json.Point(w, "base", b.BlockEntity?.BasePoint ?? CSMath.XYZ.Zero);
                 w.WriteBoolean("layout", b.Layout is not null);
                 w.WriteBoolean("anonymous", b.IsAnonymous);
-                w.WriteBoolean("external", external);
-                w.WriteBoolean("overlay", flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefOverlay));
-                w.WriteBoolean("dependent", flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefDependent));
+                w.WriteBoolean("external", IsExternal(b));
+                w.WriteBoolean("overlay", flags.HasFlag(BlockTypeFlags.XRefOverlay));
+                w.WriteBoolean("dependent", flags.HasFlag(BlockTypeFlags.XRefDependent));
                 // An external reference's path is never printed (protocol rules).
                 w.WriteBoolean("path_present", !string.IsNullOrEmpty(b.BlockEntity?.XRefPath));
                 w.WriteNumber("units", (int)b.Units);
@@ -218,11 +218,16 @@ internal static class Reader
             });
         }
 
-        if (entities)
+        if (entities || unitEvidence)
         {
             foreach (var block in doc.BlockRecords)
+            {
+                if (!entities && block.Layout is null) continue;
                 foreach (var e in block.Entities)
-                    Entities.Write(rec, e, block.Name);
+                    if (entities || e is Dimension or Viewport ||
+                        (e is Insert i && i.Block is { } reference && IsExternal(reference)))
+                        Entities.Write(rec, e, block.Name, unitEvidenceOnly: !entities);
+            }
         }
 
         foreach (var (name, count) in kinds)
@@ -256,6 +261,9 @@ internal static class Reader
         }
         return census;
     }
+
+    private static bool IsExternal(BlockRecord block) =>
+        (block.Flags & (BlockTypeFlags.XRef | BlockTypeFlags.XRefOverlay)) != 0;
 
     public static void Finish(Records rec, Census census, int errors, int warnings, Stopwatch clock)
     {

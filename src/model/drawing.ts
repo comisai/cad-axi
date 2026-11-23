@@ -56,6 +56,7 @@ export interface Block {
   overlay: boolean;
   dependent: boolean;
   path_present: boolean;
+  units?: number;
   attributes: string[];
   entities: number;
 }
@@ -135,6 +136,9 @@ export interface Entity {
   attribs?: Attrib[];
   text?: string;
   measurement?: number;
+  measurement_kind?: 'length' | 'angle';
+  dimension_factor?: number;
+  dimension_suffix?: string;
   pattern?: string;
   solid?: boolean;
   loops?: P2[][];

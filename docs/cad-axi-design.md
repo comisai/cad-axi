@@ -191,7 +191,7 @@ Streaming keeps the front end's memory bounded. It reduces records as they arriv
 | Command | Answers |
 | --- | --- |
 | `cad-axi` | Which drawings are in this folder? Version, units, entity and layer counts, and whether each can be edited |
-| `info <file>` | What does this file hold? Version (code and release), units, extents, layouts, entity counts by kind, code page, password flag, external references, images and data links (listed, never opened), opaque classes, and an `editable` verdict with its reason |
+| `info <file>` | What does this file hold? Version (code and release), declared insertion units and dimension, viewport and reference scale evidence, extents, layouts, entity counts by kind, code page, password flag, external references, images and data links (listed, never opened), opaque classes, and an `editable` verdict with its reason |
 | `layers <file>` | Name, state (on, off, frozen, locked), colour, linetype, entity count and total length |
 | `blocks <file>` | Block definitions with insert counts and attribute tags |
 | `texts <file>` | TEXT, MTEXT and attribute values with handle, layer and position. `--layer`, `--match`, `--region` |
@@ -210,6 +210,7 @@ Streaming keeps the front end's memory bounded. It reduces records as they arriv
 Shared flags:
 - **Area:** `--region x0,y0,x1,y1`, in drawing units; `--space model` or `--space <layout>`.
 - **Units:** `--units mm|cm|m|in|ft` when the file states none.
+- **Length mode:** `--3d` on `layers`, `query`, `measure` and `runs` selects XYZ length. Plan XY is the default.
 - **Output:** `--limit n`, `--full`, `--save file.json` for the complete result as JSON.
 - **Writes:** `--out` (required, never replaced), `--as 2018|2013|2010|2004|2000` (default 2018), `.dwg` or `.dxf` by the output's name.
 
@@ -227,9 +228,12 @@ A layer is named exactly, or without regard to case when that is unambiguous. `-
 
 ### 8.2 Geometry and measuring
 
-- **Lengths:** LINE by its ends; ARC and CIRCLE by radius and angle; LWPOLYLINE and POLYLINE segment by segment, with each bulge as an arc; ELLIPSE by numeric integration; SPLINE by adaptive flattening to a stated tolerance, reported with basis `approximated`.
+- **Lengths:** Geometry is projected onto world XY after insert and extrusion transforms. Straight segments use their projected endpoints. Conics use an exact result for circles and numeric integration otherwise. Polylines are measured segment by segment, with each bulge as an arc. Splines are adaptively flattened and reported with basis `approximated`. With `--3d`, the same geometry is measured in XYZ. Output and saved results include `length_mode`.
+- **Elevation:** When selected geometry spans Z, the output reports `z_span` in drawing units and counts `z_dominant_entities` whose Z span exceeds ten times their XY length. With a region, the diagnostic uses whole entities that intersect it. Plan runs skip zero-length projections.
 - **Block inserts:** geometry inside an insert is transformed by the insert's position, scale, rotation and extrusion, through nested blocks to a depth of 16, and counted once per insert. Rows show the part from inserts apart, so a fitting drawn as a block is not mistaken for pipe.
 - **Units:** `$INSUNITS` sets the unit. With no unit and no `--units`, `measure` refuses with `units_unknown`. Lengths are printed in metres to the millimetre, with the unit they came from.
+- **Unit evidence:** `info` reports the insertion-unit code and the metric or imperial hatch and linetype setting from `$MEASUREMENT`. It reads layout dimensions with their measured value, stored text and display factor, viewport height divided by model view height, and X/Y/Z reference scales with any units stored on the block. It shows up to three examples of each by default and up to twenty with `--full`. Use `query --space all` with a type filter for individual records.
+- **Unit suggestions:** A unit-bearing model dimension or a uniformly scaled model reference with known insertion units can suggest a unit. Conflicting evidence is flagged. Viewport ratios describe the paper-to-model scale. A reference scale with unknown source units can give a conditional conversion if the source is in metres. Suggestions are advisory and `measure` still requires a stated unit or `--units`.
 - **Linetypes:** a dashed pipe is one entity. Its length is the length of the line, not the sum of dashes.
 - **Area:** `--region` keeps an entity's part inside the box. The legend and the title block often hold sample lines on pipe layers, so the skill excludes them, as with `drawing-axi`.
 
@@ -246,11 +250,12 @@ A layer is named exactly, or without regard to case when that is unambiguous. `-
 
 ### 8.4 Runs and sizes
 
-`runs` and `measure --by-size` port `drawing-axi`'s run and size rules, which are pure functions:
-- Entities on the chosen layers are joined end to end within a gap, never across a corner that is not a shared end.
+`runs` and `measure --by size` port `drawing-axi`'s run and size rules:
+- Entities on the chosen layers are joined end to end within a gap in XY, or in XYZ with `--3d`. A junction ends a run.
 - A size label (TEXT, MTEXT or an attribute) sizes the run it is written along, within a reach. In a PDF the reach is in millimetres on paper. In a DWG it is a multiple of the label's text height, which tracks the plotted size without knowing the plot scale. The default is to be tuned on real drawings and printed with every result.
 - A label with a system code sizes only runs in that code's group. A label that fits runs of two layers about equally sizes neither and is counted as shared. Runs on every visible layer compete for a label, not only the layers asked for, so the answer does not depend on which layers a command names.
 - An unlabelled run stays unsized. The tool never guesses a size.
+- A spatial index over world XY curve bounds limits exact distance and direction scoring to primitives within a label's reach. Each CLI invocation reads the given file afresh.
 
 ### 8.5 Pictures
 

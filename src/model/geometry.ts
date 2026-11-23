@@ -355,39 +355,80 @@ export function conicLength(
   p: Extract<Prim, { t: 'conic' }>,
   t0 = p.t0,
   t1 = p.t1,
+  spatial = false,
 ): number {
-  const a = norm(p.M);
-  const b = norm(p.m);
+  const a = spatial ? norm(p.M) : Math.hypot(p.M[0], p.M[1]);
+  const b = spatial ? norm(p.m) : Math.hypot(p.m[0], p.m[1]);
+  const axesDot = spatial ? dot(p.M, p.m) : p.M[0] * p.m[0] + p.M[1] * p.m[1];
   const span = Math.abs(t1 - t0);
   if (
     Math.abs(a - b) <= 1e-12 * Math.max(a, b) &&
-    Math.abs(dot(p.M, p.m)) <= 1e-12 * a * b
+    Math.abs(axesDot) <= 1e-12 * a * b
   )
     return a * span;
-  const pieces = Math.max(8, Math.ceil(span / (Math.PI / 16)));
+  // Split at the stationary points of speed. In projection one axis can
+  // vanish, producing a reversal where the speed has a cusp.
+  const phase = Math.atan2(2 * axesDot, a * a - b * b) / 2;
+  const lo = Math.min(t0, t1);
+  const hi = Math.max(t0, t1);
+  const step = Math.PI / 2;
+  const stops = [lo];
+  for (let i = 1; i <= Math.ceil(span / step) + 1; i++) {
+    const t = phase + (Math.floor((lo - phase) / step) + i) * step;
+    if (t >= hi) break;
+    if (t > lo) stops.push(t);
+  }
+  stops.push(hi);
+  let total = 0;
+  for (let i = 1; i < stops.length; i++) {
+    const from = stops[i - 1] as number;
+    const to = stops[i] as number;
+    const pieces = Math.max(1, Math.ceil((to - from) / (Math.PI / 16)));
+    total += integrateConic(p, from, to, pieces, spatial);
+  }
+  return total;
+}
+
+function integrateConic(
+  p: Extract<Prim, { t: 'conic' }>,
+  t0: number,
+  t1: number,
+  pieces: number,
+  spatial: boolean,
+): number {
   const h = (t1 - t0) / pieces;
   let total = 0;
   for (let i = 0; i < pieces; i++) {
     const mid = t0 + h * (i + 0.5);
     for (let k = 0; k < 8; k++) {
       const t = mid + (h / 2) * (GL_X[k] as number);
-      const d = sub(scale(p.m, Math.cos(t)), scale(p.M, Math.sin(t)));
-      total += (GL_W[k] as number) * norm(d) * (Math.abs(h) / 2);
+      const sin = Math.sin(t);
+      const cos = Math.cos(t);
+      const dx = p.m[0] * cos - p.M[0] * sin;
+      const dy = p.m[1] * cos - p.M[1] * sin;
+      const speed = spatial
+        ? Math.hypot(dx, dy, p.m[2] * cos - p.M[2] * sin)
+        : Math.hypot(dx, dy);
+      total += (GL_W[k] as number) * speed * (Math.abs(h) / 2);
     }
   }
   return total;
 }
 
-export function primLength(p: Prim): number {
+function segmentLength(a: P3, b: P3, spatial: boolean): number {
+  return spatial ? dist(a, b) : Math.hypot(b[0] - a[0], b[1] - a[1]);
+}
+
+export function primLength(p: Prim, spatial = false): number {
   switch (p.t) {
     case 'seg':
-      return dist(p.a, p.b);
+      return segmentLength(p.a, p.b, spatial);
     case 'conic':
-      return conicLength(p);
+      return conicLength(p, p.t0, p.t1, spatial);
     case 'poly': {
       let s = 0;
       for (let i = 0; i + 1 < p.pts.length; i++)
-        s += dist(p.pts[i] as P3, p.pts[i + 1] as P3);
+        s += segmentLength(p.pts[i] as P3, p.pts[i + 1] as P3, spatial);
       return s;
     }
   }
@@ -402,6 +443,37 @@ export function primEnds(p: Prim): [P3, P3] {
     case 'poly':
       return [p.pts[0] as P3, p.pts.at(-1) as P3];
   }
+}
+
+/** The minimum and maximum coordinate on one axis, including conic extrema. */
+export function primRange(p: Prim, axis: 0 | 1 | 2): [number, number] {
+  if (p.t === 'seg')
+    return [Math.min(p.a[axis], p.b[axis]), Math.max(p.a[axis], p.b[axis])];
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  if (p.t === 'poly') {
+    for (const pt of p.pts) {
+      min = Math.min(min, pt[axis]);
+      max = Math.max(max, pt[axis]);
+    }
+    return [min, max];
+  }
+  const a = p.M[axis];
+  const b = p.m[axis];
+  const c = p.c[axis];
+  if (a === 0 && b === 0) return [c, c];
+  const lo = Math.min(p.t0, p.t1);
+  const hi = Math.max(p.t0, p.t1);
+  const phase = Math.atan2(b, a);
+  const radius = Math.hypot(a, b);
+  const from = c + a * Math.cos(lo) + b * Math.sin(lo);
+  const to = c + a * Math.cos(hi) + b * Math.sin(hi);
+  min = Math.min(from, to);
+  max = Math.max(from, to);
+  if (phase + Math.ceil((lo - phase) / TAU) * TAU <= hi) max = c + radius;
+  const trough = phase + Math.PI;
+  if (trough + Math.ceil((lo - trough) / TAU) * TAU <= hi) min = c - radius;
+  return [min, max];
 }
 
 /** Points along a primitive, for pictures and boxes. */
@@ -458,17 +530,17 @@ function clipFraction(a: P3, b: P3, box: Box): number {
 }
 
 /** The length of a primitive inside a box (XY), or its whole length without one. */
-export function lengthIn(p: Prim, box: Box | null): number {
-  if (!box) return primLength(p);
+export function lengthIn(p: Prim, box: Box | null, spatial = false): number {
+  if (!box) return primLength(p, spatial);
   switch (p.t) {
     case 'seg':
-      return dist(p.a, p.b) * clipFraction(p.a, p.b, box);
+      return segmentLength(p.a, p.b, spatial) * clipFraction(p.a, p.b, box);
     case 'poly': {
       let s = 0;
       for (let i = 0; i + 1 < p.pts.length; i++) {
         const a = p.pts[i] as P3;
         const b = p.pts[i + 1] as P3;
-        s += dist(a, b) * clipFraction(a, b, box);
+        s += segmentLength(a, b, spatial) * clipFraction(a, b, box);
       }
       return s;
     }
@@ -483,7 +555,7 @@ export function lengthIn(p: Prim, box: Box | null): number {
         const ta = p.t0 + h * i;
         const tb = ta + h;
         const f = clipFraction(conicPoint(p, ta), conicPoint(p, tb), box);
-        if (f > 0) s += f * conicLength(p, ta, tb);
+        if (f > 0) s += f * conicLength(p, ta, tb, spatial);
       }
       return s;
     }

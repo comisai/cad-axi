@@ -152,7 +152,7 @@ After the first release, the token can be narrowed to this package or replaced b
 
 | Run | Command | Purpose |
 | --- | --- | --- |
-| While changing reading, geometry, runs or sizes | `npm run live -- --plan <plan>` | Catch a regression on real drawings before review |
+| While changing reading, geometry, runs or sizes | `npm run live -- --plan <plan>` | Catch a regression on real drawings before review. Compare takeoffs with world XY and record the unit evidence. |
 | Before each release | `npm run build && npm run live -- --plan <plan>` | The gate for M6, M9 and M10 |
 | After each release | The same, with the installed package on `PATH` | The published bytes behave like the built ones |
 | When new drawings arrive | A new plan file | A2 |

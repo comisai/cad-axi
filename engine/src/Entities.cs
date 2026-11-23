@@ -11,7 +11,7 @@ namespace CadAxi.Engine;
 // turns them into world coordinates.
 internal static class Entities
 {
-    public static void Write(Records rec, Entity e, string owner)
+    public static void Write(Records rec, Entity e, string owner, bool unitEvidenceOnly)
     {
         rec.Write("entity", w =>
         {
@@ -23,7 +23,7 @@ internal static class Entities
             w.WriteString("lt", e.LineType?.Name ?? "ByLayer");
             if (double.IsFinite(e.LineTypeScale) && e.LineTypeScale != 1) w.WriteNumber("lts", e.LineTypeScale);
             if (e.IsInvisible) w.WriteBoolean("invisible", true);
-            Geometry(w, e);
+            Geometry(w, e, unitEvidenceOnly);
         });
     }
 
@@ -33,7 +33,7 @@ internal static class Entities
         Json.Point(w, "n", n);
     }
 
-    private static void Geometry(Utf8JsonWriter w, Entity e)
+    private static void Geometry(Utf8JsonWriter w, Entity e, bool unitEvidenceOnly)
     {
         switch (e)
         {
@@ -142,6 +142,13 @@ internal static class Entities
                 break;
             case Insert i:
                 w.WriteString("block", i.Block?.Name ?? "");
+                if (unitEvidenceOnly)
+                {
+                    if (double.IsFinite(i.XScale)) w.WriteNumber("sx", i.XScale);
+                    if (double.IsFinite(i.YScale)) w.WriteNumber("sy", i.YScale);
+                    if (double.IsFinite(i.ZScale)) w.WriteNumber("sz", i.ZScale);
+                    break;
+                }
                 Json.Point(w, "at", i.InsertPoint);
                 Json.Num(w, "sx", i.XScale);
                 Json.Num(w, "sy", i.YScale);
@@ -175,6 +182,19 @@ internal static class Entities
                 {
                     var m = d.Measurement;
                     if (double.IsFinite(m)) w.WriteNumber("measurement", m);
+                    if (d is DimensionAligned or DimensionRadius or DimensionDiameter or DimensionArc)
+                    {
+                        w.WriteString("measurement_kind", "length");
+                        var style = d.GetActiveDimensionStyle();
+                        if (style is not null)
+                        {
+                            if (double.IsFinite(style.LinearScaleFactor))
+                                w.WriteNumber("dimension_factor", style.LinearScaleFactor);
+                            w.WriteString("dimension_suffix", style.Suffix);
+                        }
+                    }
+                    else if (d is DimensionAngular2Line or DimensionAngular3Pt)
+                        w.WriteString("measurement_kind", "angle");
                 }
                 catch (Exception) { /* not every dimension kind can measure itself */ }
                 break;
@@ -226,6 +246,13 @@ internal static class Entities
                 w.WriteBoolean("path_present", !string.IsNullOrEmpty(image.Definition?.FileName));
                 break;
             case Viewport vp:
+                if (unitEvidenceOnly)
+                {
+                    if (double.IsFinite(vp.Height)) w.WriteNumber("ht", vp.Height);
+                    if (double.IsFinite(vp.ViewHeight)) w.WriteNumber("view_height", vp.ViewHeight);
+                    w.WriteNumber("id", vp.Id);
+                    break;
+                }
                 Json.Point(w, "c", vp.Center);
                 Json.Num(w, "w", vp.Width);
                 Json.Num(w, "ht", vp.Height);
