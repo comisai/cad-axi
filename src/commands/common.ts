@@ -213,11 +213,11 @@ export interface Loaded extends Opened {
   drawing: Drawing;
 }
 
-/** Read a drawing through the engine. `entities` asks for every entity. */
+/** Read a drawing through the engine, with optional geometry or unit evidence. */
 export async function load(
   input: CommandInput,
   file: string,
-  entities: boolean,
+  entities: boolean | 'units',
 ): Promise<Loaded> {
   const maxBytes = positiveInt(
     input.values,
@@ -227,7 +227,11 @@ export async function load(
   );
   const opened = checkFile(input.io, file, maxBytes);
   const drawing = await readPath(input.io, opened.path, entities, maxBytes);
-  if (entities && drawing.end.entities > 0 && drawing.entities.length === 0)
+  if (
+    entities === true &&
+    drawing.end.entities > 0 &&
+    drawing.entities.length === 0
+  )
     throw new AxiError(
       'damaged',
       'The engine read no entities from a drawing that has some.',
@@ -238,12 +242,13 @@ export async function load(
 export async function readPath(
   io: Io,
   path: string,
-  entities: boolean,
+  entities: boolean | 'units',
   maxBytes = MAX_BYTES,
 ): Promise<Drawing> {
   const drawing = emptyDrawing();
   const args = ['read', path, '--max-bytes', String(maxBytes)];
-  if (entities) args.push('--entities');
+  if (entities === true) args.push('--entities');
+  if (entities === 'units') args.push('--unit-evidence');
   await runEngine(args, {
     deadline: deadlineOf(io),
     now: () => io.now().getTime(),

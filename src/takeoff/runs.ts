@@ -3,7 +3,7 @@
 // three or more ends meet, each branch is its own run.
 
 import type { P3 } from '../model/drawing.ts';
-import { primEnds } from '../model/geometry.ts';
+import { dist, primEnds } from '../model/geometry.ts';
 import type { Piece } from './lengths.ts';
 
 export interface Run {
@@ -37,25 +37,28 @@ function endsOf(piece: Piece): [P3, P3] | null {
 export function findRuns(
   groups: ReadonlyArray<{ name: string; pieces: Piece[] }>,
   gap: number,
+  spatial = false,
 ): Run[] {
   const runs: Run[] = [];
+  const distance = spatial
+    ? dist
+    : (a: P3, b: P3) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+  const dz = spatial ? 1 : 0;
   for (const group of groups) {
     const nodes: Node[] = [];
     const grid = new Map<string, number[]>();
     const cell = Math.max(gap, 1e-9);
-    const key = (x: number, y: number) =>
-      `${Math.floor(x / cell)},${Math.floor(y / cell)}`;
     const nodeAt = (p: P3): number => {
       const cx = Math.floor(p[0] / cell);
       const cy = Math.floor(p[1] / cell);
+      const cz = spatial ? Math.floor(p[2] / cell) : 0;
       for (let dx = -1; dx <= 1; dx++)
         for (let dy = -1; dy <= 1; dy++)
-          for (const i of grid.get(`${cx + dx},${cy + dy}`) ?? []) {
-            const q = (nodes[i] as Node).p;
-            if (Math.hypot(q[0] - p[0], q[1] - p[1]) <= gap) return i;
-          }
+          for (let z = -dz; z <= dz; z++)
+            for (const i of grid.get(`${cx + dx},${cy + dy},${cz + z}`) ?? [])
+              if (distance((nodes[i] as Node).p, p) <= gap) return i;
       nodes.push({ p, edges: [] });
-      const k = key(p[0], p[1]);
+      const k = `${cx},${cy},${cz}`;
       const list = grid.get(k);
       if (list) list.push(nodes.length - 1);
       else grid.set(k, [nodes.length - 1]);
@@ -67,11 +70,7 @@ export function findRuns(
       const ends = endsOf(piece);
       if (!ends) continue;
       const [a, b] = ends;
-      if (
-        Math.hypot(a[0] - b[0], a[1] - b[1]) <= gap &&
-        piece.prims.length > 0 &&
-        piece.length > gap * 2
-      ) {
+      if (distance(a, b) <= gap && piece.length > gap * 2) {
         closed.push(piece);
         continue;
       }

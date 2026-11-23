@@ -51,7 +51,9 @@ cad-axi convert <file> --out f.dxf       another version or format
 cad-axi version                          the package, engine and ACadSharp versions
 ```
 
-`cad-axi help <command>` gives each command's flags. Lengths are printed in metres when the drawing states its units; with none, pass `--units`.
+`cad-axi help <command>` gives each command's flags. Takeoffs measure plan length in world XY. Pass `--3d` to measure in XYZ and check `length_mode` in the result.
+
+`cad-axi info <file>` shows the declared insertion units, dimension measurements and text, viewport ratios, and reference scales. When the drawing states no unit, confirm it from the evidence or with the drawing owner and pass `--units`. Takeoff lengths are printed in metres once the unit is known.
 
 ## Rules it keeps
 

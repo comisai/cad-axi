@@ -103,6 +103,22 @@ export type Ent =
       value: string;
       at: Xyz;
       height: number;
+    }
+  | {
+      kind: 'DIMENSION';
+      layer: string;
+      from: Xyz;
+      to: Xyz;
+      text?: string;
+    }
+  | {
+      kind: 'VIEWPORT';
+      layer: string;
+      center: Xyz;
+      width: number;
+      height: number;
+      viewHeight: number;
+      id?: number;
     };
 
 export interface DxfLayer {
@@ -117,6 +133,7 @@ export interface DxfLayer {
 export interface DxfDrawing {
   /** $INSUNITS: 4 millimetres, 6 metres, 1 inches, 0 none. */
   units: number;
+  measurement?: 0 | 1;
   codepage?: string;
   layers: DxfLayer[];
   linetypes?: Array<{ name: string; description: string; pattern: number[] }>;
@@ -129,7 +146,7 @@ export interface DxfDrawing {
   }>;
   blocks?: Array<{ name: string; base?: Xyz; entities: Ent[] }>;
   /** External references: a block that names another file. */
-  xrefs?: Array<{ name: string; path: string }>;
+  xrefs?: Array<{ name: string; path: string; units?: number }>;
   model: Ent[];
   paper?: Ent[];
 }
@@ -274,6 +291,10 @@ export function writeDxf(d: DxfDrawing): Buffer {
   o.g(3, d.codepage ?? 'ANSI_1252');
   o.g(9, '$INSUNITS');
   o.g(70, d.units);
+  if (d.measurement !== undefined) {
+    o.g(9, '$MEASUREMENT');
+    o.g(70, d.measurement);
+  }
   o.g(9, '$HANDSEED');
   o.g(5, 'FFFF');
   o.g(0, 'ENDSEC');
@@ -383,6 +404,8 @@ export function writeDxf(d: DxfDrawing): Buffer {
       o.g(2, name);
       if (name === '*Model_Space') o.g(340, modelLayout);
       if (name === '*Paper_Space') o.g(340, paperLayout);
+      const units = d.xrefs?.find((x) => x.name === name)?.units;
+      if (units !== undefined) o.g(70, units);
     }
   });
   o.g(0, 'ENDSEC');
@@ -652,6 +675,29 @@ function entity(o: Out, e: Ent, owner: string, paper: boolean): void {
       o.g(3, dxfText(e.prompt));
       o.g(2, e.tag);
       o.g(70, 0);
+      return;
+    case 'DIMENSION':
+      common(o, 'DIMENSION', owner, paper, e);
+      o.g(100, 'AcDbDimension');
+      point(o, 10, [e.to[0], e.to[1] + 10]);
+      point(o, 11, [(e.from[0] + e.to[0]) / 2, e.to[1] + 10]);
+      o.g(70, 33);
+      if (e.text !== undefined) o.g(1, dxfText(e.text));
+      o.g(100, 'AcDbAlignedDimension');
+      point(o, 13, e.from);
+      point(o, 14, e.to);
+      return;
+    case 'VIEWPORT':
+      common(o, 'VIEWPORT', owner, paper, e);
+      o.g(100, 'AcDbViewport');
+      point(o, 10, e.center);
+      o.g(40, e.width);
+      o.g(41, e.height);
+      o.g(68, 1);
+      o.g(69, e.id ?? 2);
+      o.g(12, 0);
+      o.g(22, 0);
+      o.g(45, e.viewHeight);
       return;
     case 'INSERT': {
       const h = o.handle();

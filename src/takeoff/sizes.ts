@@ -9,8 +9,9 @@
 // - An unlabelled run stays unsized. No size is ever guessed.
 
 import type { P3 } from '../model/drawing.ts';
-import { directionNear, distanceTo } from '../model/geometry.ts';
+import { directionNear, distanceTo, type Prim } from '../model/geometry.ts';
 import type { Run } from './runs.ts';
+import { indexRuns } from './size-index.ts';
 
 const METRIC = /Ø\s*(\d{1,4}(?:\.\d+)?)(?!\s*["\d.])/;
 const INCH = /(?:Ø\s*)?(\d{1,2}(?:\.\d+)?(?:\s*\d\/\d)?|\d\/\d)\s*"/;
@@ -120,7 +121,7 @@ export function sizeRuns(
   labels: readonly SizeLabel[],
   reach: number,
 ): { runs: SizedRun[]; placement: Placement } {
-  const votes = runs.map(() => new Map<string, string[]>());
+  const votes = new Map<number, Map<string, string[]>>();
   const placement: Placement = { placed: 0, onRun: [], shared: [], missed: [] };
   const groupCodes = new Map<string, string>();
   for (const r of runs) {
@@ -128,40 +129,53 @@ export function sizeRuns(
     groupCodes.set(r.group, code);
   }
   const coded = new Set([...groupCodes.values()]);
+  const nearby = labels.length ? indexRuns(runs) : undefined;
   for (const label of labels) {
+    if (label.code && !coded.has(label.code)) {
+      placement.missed.push(label);
+      continue;
+    }
     const limit = reach * label.height;
     const candidates: Array<{ run: number; score: number }> = [];
-    runs.forEach((run, i) => {
-      if (
-        label.code &&
-        coded.has(label.code) &&
-        groupCodes.get(run.group) !== label.code
-      )
-        return;
-      if (label.code && !coded.has(label.code)) return;
-      let best = Number.POSITIVE_INFINITY;
-      let along = 1;
-      for (const piece of run.pieces)
-        for (const prim of piece.prims) {
-          const d = distanceTo(prim, label.x, label.y);
-          if (d < best) {
-            best = d;
-            along = across(
-              directionNear(prim, label.x, label.y),
-              label.rotation,
-            );
-          }
-        }
-      if (best > limit) return;
+    const nearest = new Map<
+      number,
+      { distance: number; order: number; prim: Prim }
+    >();
+    nearby?.(
+      {
+        x0: label.x - limit,
+        x1: label.x + limit,
+        y0: label.y - limit,
+        y1: label.y + limit,
+      },
+      ({ run, order, prim }) => {
+        const group = (runs[run] as Run).group;
+        if (label.code && groupCodes.get(group) !== label.code) return;
+        const distance = distanceTo(prim, label.x, label.y);
+        if (!(distance <= limit)) return;
+        const prev = nearest.get(run);
+        if (
+          !prev ||
+          distance < prev.distance ||
+          (distance === prev.distance && order < prev.order)
+        )
+          nearest.set(run, { distance, order, prim });
+      },
+    );
+    for (const [run, { distance, prim }] of nearest) {
+      const along = across(
+        directionNear(prim, label.x, label.y),
+        label.rotation,
+      );
       // A run written along the label fits it best; one across it only when close.
-      if (along > 0.5 && best > label.height) return;
-      candidates.push({ run: i, score: best * (1 + along * 2) });
-    });
+      if (along > 0.5 && distance > label.height) continue;
+      candidates.push({ run, score: distance * (1 + along * 2) });
+    }
     if (!candidates.length) {
       placement.missed.push(label);
       continue;
     }
-    candidates.sort((a, b) => a.score - b.score);
+    candidates.sort((a, b) => a.score - b.score || a.run - b.run);
     const first = candidates[0] as { run: number; score: number };
     const rival = candidates.find(
       (c) => (runs[c.run] as Run).group !== (runs[first.run] as Run).group,
@@ -170,16 +184,17 @@ export function sizeRuns(
       placement.shared.push(label);
       continue;
     }
-    const v = votes[first.run] as Map<string, string[]>;
+    const v = votes.get(first.run) ?? new Map<string, string[]>();
     const list = v.get(label.size) ?? [];
     list.push(label.text);
     v.set(label.size, list);
+    votes.set(first.run, v);
     placement.placed++;
     placement.onRun.push(first.run);
   }
   const sized: SizedRun[] = runs.map((run, i) => {
-    const v = votes[i] as Map<string, string[]>;
-    if (!v.size) return { ...run, size: null, basis: 'none', labels: [] };
+    const v = votes.get(i);
+    if (!v) return { ...run, size: null, basis: 'none', labels: [] };
     const ranked = [...v.entries()].sort((a, b) => b[1].length - a[1].length);
     const top = ranked[0] as [string, string[]];
     const next = ranked[1];

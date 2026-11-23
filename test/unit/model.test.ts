@@ -201,6 +201,21 @@ describe('geometry', () => {
     nearP(apply(m, [5, 5, 0]), [10, 10, 0]);
   });
 
+  it('measures a tilted conic after projection, including a reversal in XY', () => {
+    const phase = 0.3;
+    const conic: Prim = {
+      t: 'conic',
+      c: [0, 0, 0],
+      M: [Math.cos(phase), 0, Math.sin(phase)],
+      m: [-Math.sin(phase), 0, Math.cos(phase)],
+      t0: 0,
+      t1: 2 * Math.PI,
+    };
+    near(primLength(conic), 4);
+    near(primLength(conic, true), 2 * Math.PI);
+    near(lengthIn(conic, { x0: 0, y0: -1, x1: 2, y1: 1 }), 2, 1e-4);
+  });
+
   it('a region keeps the part inside', () => {
     const seg: Prim = { t: 'seg', a: [0, 0, 0], b: [10, 0, 0] };
     near(lengthIn(seg, { x0: 2, y0: -1, x1: 5, y1: 1 }), 3);

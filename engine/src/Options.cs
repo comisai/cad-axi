@@ -11,6 +11,7 @@ internal sealed class Options
     public long MaxBytes { get; private set; } = 64L * 1024 * 1024;
     public int TimeLimitMs { get; private set; } = 120_000;
     public bool Entities { get; private set; }
+    public bool UnitEvidence { get; private set; }
 
     public static Options Parse(string[] args, int start)
     {
@@ -27,6 +28,7 @@ internal sealed class Options
                 case "--max-bytes": o.MaxBytes = Number(args, ref i, 1, 256L * 1024 * 1024); break;
                 case "--time-limit-ms": o.TimeLimitMs = (int)Number(args, ref i, 1, 3_600_000); break;
                 case "--entities": o.Entities = true; break;
+                case "--unit-evidence": o.UnitEvidence = true; break;
                 default:
                     if (a.StartsWith("--", StringComparison.Ordinal) || o.File is not null)
                         throw new EngineError("usage");
