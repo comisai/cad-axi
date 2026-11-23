@@ -191,7 +191,7 @@ Streaming keeps the front end's memory bounded. It reduces records as they arriv
 | Command | Answers |
 | --- | --- |
 | `cad-axi` | Which drawings are in this folder? Version, units, entity and layer counts, and whether each can be edited |
-| `info <file>` | What does this file hold? Version (code and release), units, extents, layouts, entity counts by kind, code page, password flag, external references, images and data links (listed, never opened), opaque classes, and an `editable` verdict with its reason |
+| `info <file>` | What does this file hold? Version (code and release), units, extents, layouts, entity counts by kind, code page, password flag, external references with filenames and host-relative folders where known, images and data links, opaque classes, and an `editable` verdict with its reason |
 | `layers <file>` | Name, state (on, off, frozen, locked), colour, linetype, entity count and total length |
 | `blocks <file>` | Block definitions with insert counts and attribute tags |
 | `texts <file>` | TEXT, MTEXT and attribute values with handle, layer and position. `--layer`, `--match`, `--region` |
@@ -235,13 +235,10 @@ A layer is named exactly, or without regard to case when that is unambiguous. `-
 
 ### 8.3 Text
 
-- Each text row has `raw`, exactly as stored, and `text`, decoded:
-  - MTEXT formatting codes are removed from `text` and kept in `raw`;
-  - `\U+XXXX` escapes and `%%c`, `%%d` and `%%p` are decoded;
-  - pre-AC1021 strings are decoded with the file's code page.
-- `--full` adds the style, font kind (SHX or TrueType), font file name and the backwards flag.
-- **Hebrew written on Latin keys.** When a style's font is a known Hebrew SHX font and the text reads as Latin keys of the Hebrew layout, `text` carries the decoded Hebrew and `raw` keeps the stored letters. This reuses `drawing-axi`'s decoding rules, which were tuned on real plots. A rule that is a judgement is reported as one: the row says `decoded: keyboard` so the skill can check it.
-- The tool never reverses text on its own. It reports the backwards flag. Deciding what reversed text means belongs to the skill.
+- The engine reads pre-AC1021 strings in the drawing's declared code page. Windows-1252 preserves legacy bytes when the declaration is missing or unrecognized. Modern DWG and DXF use Unicode.
+- `text` expands `\U+XXXX` escapes and `%%c`, `%%d` and `%%p`. It removes MTEXT formatting. `--full` also shows `raw` as read by the engine, the style, the font name and kind, and the backwards flag.
+- **Hebrew written on Latin keys.** A Hebrew SHX style can store Hebrew as Latin keys. The decoder checks that the keys read as Hebrew and reports `decoded: keyboard`. Latin equations remain in their stored order.
+- **DOS Hebrew.** Declared code page 862 and groups of DOS Hebrew glyphs in drawings with a missing code page or in Unicode SHX labels are reported as `decoded: dos-hebrew`. Hebrew final letters help distinguish logical order from visual order. Ambiguous DOS text defaults to visual order. The decoder keeps sizes together when reordering, including mixed fractions and inch marks. In a drawing with DOS Hebrew, it also corrects an improper inch fraction when reversing it yields a proper one.
 - When the tool writes text, it writes logical-order Unicode MTEXT with a TrueType style. It warns when the output version is older than AC1021, where every string passes through the code page and characters outside it are lost.
 
 ### 8.4 Runs and sizes
@@ -306,7 +303,7 @@ Every edit passes five checks.
 | `encrypted` | Password-protected |
 | `damaged` | Cannot be read |
 | `unsupported` | A version or feature the engine does not handle, such as R13 DWG or an AC1021 write |
-| `unsupported_platform` | No engine for this operating system or processor |
+| `unsupported_platform` | The engine cannot start on this platform, including when glibc is too old |
 | `too_large` | Over the size or entity cap |
 | `units_unknown` | The file states no units and `--units` was not given |
 | `unknown_layer`, `unknown_block`, `unknown_handle` | A name or handle the file does not hold |
@@ -342,6 +339,7 @@ DWG parsing has a long bug record in every implementation. ODA's advisory page l
 - The engine runs as a child process with an input cap, a heap cap, a time limit and a hard kill at the deadline, inside a workbench that already has no network.
 - Preview images are not decoded.
 - The tool never resolves external references, images, OLE objects, data links or UNC paths. It lists them as metadata. When a source carries them, `info` and every write record say so, because an edited copy passes them on to the owner's CAD.
+- `info` and `blocks --full` show the reference filename and a lexical host-relative folder when the saved location supplies one. A same-folder reference uses `.`. An absolute Linux path inside the host folder can be made relative to it. Other absolute references show the filename, with no folder. The engine reads these values from the host drawing without opening the destination.
 - Its own outputs never add any of them.
 - It writes only the temporary file, `--out` and `--save`.
 
@@ -366,7 +364,7 @@ The name avoids the `-write` suffix, because a Comis pack test reads `-write` as
 - **One npm package, `cad-axi`, MIT,** published from this public repository with npm provenance, as `drawing-axi` is.
 - **The engine binaries ship inside the package,** under `dist/engine/linux-x64/` and `dist/engine/linux-arm64/`. Inside the package they inherit its provenance. Separate per-platform packages would not: a name like `cad-axi-linux-x64` would not match the Comis publisher check's `-axi` pattern and would slip past it.
 - **NativeAOT** with the ACadSharp assembly rooted (`TrimmerRootAssembly`), because ACadSharp creates table entries by reflection and a trimmed build crashes. Expected size is about 10 MB a platform. Built on native runners for each platform, against a C library no newer than Debian trixie's.
-- **Platform selection** by `process.platform` and `process.arch`. Any other platform gets `unsupported_platform`. macOS binaries can follow for standalone use; Comis runs Linux containers on every host.
+- **Platform selection** by `process.platform` and `process.arch`. The engine needs glibc 2.38 or later. A missing glibc version reported by the loader becomes `unsupported_platform` with the required version. Comis runs Linux containers on every host.
 - **The engine is executable,** mode 0755, checked in the package and again after the Comis pack build, which normalises modes.
 - **Versions:** `cad-axi version` prints the package, engine and ACadSharp versions. A package test asserts that the compiled ACadSharp version equals the pinned one, because `npm audit` cannot see inside a binary.
 - **NOTICE** credits ACadSharp (MIT), the CSUtilities code compiled into it (MIT) and the .NET runtime parts that NativeAOT links (MIT), and carries the trademark disclaimer. Nothing GPL and nothing from ODA goes in the package.

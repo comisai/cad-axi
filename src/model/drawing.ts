@@ -10,6 +10,7 @@ export interface Header {
   format: 'dwg' | 'dxf';
   version: string;
   codepage: string;
+  codepage_assumed?: boolean;
   insunits: number;
   measurement: number;
   extmin?: P3;
@@ -56,6 +57,8 @@ export interface Block {
   overlay: boolean;
   dependent: boolean;
   path_present: boolean;
+  xref_file?: string;
+  xref_folder?: string;
   attributes: string[];
   entities: number;
 }

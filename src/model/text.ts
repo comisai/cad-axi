@@ -1,10 +1,11 @@
 // Text as stored in a drawing, and as a person reads it (design §8.3):
 // - MTEXT formatting codes are removed;
 // - \U+XXXX escapes and %%c, %%d and %%p are decoded;
+// - DOS Hebrew in legacy stroke text is decoded and put in reading order;
 // - Hebrew typed on the Latin keys of the Israeli keyboard, for a Hebrew
 //   stroke (SHX) font, is decoded when it reads as Hebrew, and marked so.
-// The stored text is always kept beside it, unchanged. Text is never
-// reversed on the strength of a style's backwards flag: that is reported.
+// The stored text is kept beside the decoded text. The style's backwards
+// flag is reported separately.
 //
 // The keyboard and DOS Hebrew rules come from drawing-axi, where they were
 // tuned on real plots.
@@ -151,7 +152,7 @@ const MIRROR: Record<string, string> = {
 };
 
 /** Digits and Latin letters inside right-to-left text back in reading order. */
-function orderRuns(chars: string[]): string[] {
+function orderRuns(chars: string[], preserveSizes = false): string[] {
   const out = [...chars];
   const inRun = new Array<boolean>(out.length).fill(false);
   let i = 0;
@@ -169,10 +170,15 @@ function orderRuns(chars: string[]): string[] {
     let start = i;
     if (
       (out[start - 1] === '"' || out[start - 1] === "'") &&
-      !isHebrew(out[start - 2])
+      (!isHebrew(out[start - 2]) || /\d/.test(out[start] ?? ''))
     )
       start--;
-    const run = out.slice(start, end + 1).reverse();
+    const run = out.slice(start, end + 1);
+    const orderedSize =
+      preserveSizes &&
+      /^\d+(?:[.,/]\d+)*$/.test(run.join('')) &&
+      (run.includes('/') || out[end + 1] === '"' || out[end + 1] === "'");
+    if (!orderedSize) run.reverse();
     for (let k = 0; k < run.length; k++) {
       out[start + k] = run[k] as string;
       inRun[start + k] = true;
@@ -183,7 +189,10 @@ function orderRuns(chars: string[]): string[] {
 }
 
 function keyed(text: string): string {
-  return [...text].map((c) => KEY_MAP.get(c) ?? c).join('');
+  return text.replace(
+    /\d+(?:[.,/]\d+)*['"]?|['"]\d+(?:[.,/]\d+)*|./gsu,
+    (part) => KEY_MAP.get(part) ?? part,
+  );
 }
 
 /** Whether keyboard-mapped text reads as Hebrew. */
@@ -200,12 +209,12 @@ export function plausibleHebrew(mapped: string): boolean {
     if (/\d/.test(chars[i - 1] ?? '') && /\d/.test(chars[i + 1] ?? ''))
       return false;
   }
-  if (letters >= 2) return true;
+  if (letters >= 2) return /[א-ת]{2}/.test(mapped);
   return letters === 1 && /[א-ת]['".]/.test(mapped);
 }
 
 function keyboardHebrew(text: string): string {
-  return orderRuns([...keyed(text)])
+  return orderRuns(readingUnits(keyed(normalizeSizes(text))), true)
     .join('')
     .replace(/(?<=[א-ת])''(?=[א-ת])/g, '"')
     .trim();
@@ -218,7 +227,79 @@ export function hebrewShx(font: string): boolean {
   );
 }
 
-export type Decoded = 'keyboard' | null;
+// Windows-1252's rendering of bytes 0x80–0x9A. The unassigned positions
+// can also appear in a DWG as literal C1 control code points.
+const DOS_GLYPHS = '€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š';
+const DOS_MAP = new Map(
+  [...DOS_GLYPHS].map((c, i) => [c, String.fromCharCode(0x05d0 + i)]),
+);
+const DOS_CLUE = /[ŠŒŽ˜š\u0081\u008d\u008f\u0090]/u;
+
+/** Signs that a stroke label contains DOS bytes shown as Windows-1252. */
+export function hasDosGlyphs(text: string, knownStyle = false): boolean {
+  if (
+    /[א-ת]/u.test(text) ||
+    !(DOS_CLUE.test(text) || (knownStyle && /[‚ƒ„†‡ˆ‰‹•™]/u.test(text)))
+  )
+    return false;
+  const mapped = [...text].filter((c) => DOS_MAP.has(c)).length;
+  return (
+    mapped >= (knownStyle ? 2 : 3) &&
+    (text.match(/[A-Za-z]/g)?.length ?? 0) <= mapped
+  );
+}
+
+/** A final Hebrew letter belongs at the end of a word in reading order. */
+function finalLetterOrder(chars: string[]): number {
+  let score = 0;
+  for (const [i, c] of chars.entries()) {
+    if (FINALS.has(c))
+      score += Number(isHebrew(chars[i - 1])) - Number(isHebrew(chars[i + 1]));
+  }
+  return score;
+}
+
+/** A leading inch or foot mark identifies a size stored backwards. */
+function normalizeSizes(text: string): string {
+  return text.replace(
+    /(?<![\p{L}\p{N}])(['"])(\d+\/\d+ +\d+|\d+(?:[./]\d+)*)(?![\p{L}\p{N}./'"])/gu,
+    (_, mark: string, size: string) => [...size].reverse().join('') + mark,
+  );
+}
+
+// Some DOS drawings store a fraction backwards with its inch mark still
+// at the end. Change it only when reversing turns an improper fraction
+// into a proper one, a common notation for a fractional pipe size.
+function normalizeDosFractions(text: string): string {
+  return text.replace(
+    /(?<![\d./"])(\d{1,4})\/(\d{1,4})(?=")/g,
+    (fraction, numerator: string, denominator: string) => {
+      if (Number(numerator) <= Number(denominator)) return fraction;
+      const top = [...denominator].reverse().join('');
+      const bottom = [...numerator].reverse().join('');
+      return Number(top) > 0 && Number(top) < Number(bottom)
+        ? `${top}/${bottom}`
+        : fraction;
+    },
+  );
+}
+
+/** A mixed fraction is one unit when reordering right-to-left text. */
+function readingUnits(text: string): string[] {
+  return text.match(/\d+ +\d+\/\d+['"]?|./gsu) ?? [];
+}
+
+function dosLine(text: string): string {
+  const sizes = normalizeSizes(text);
+  // Some CAD files store Hebrew in reading order. When final forms give
+  // us no direction, use the visual order of DOS stroke fonts.
+  return finalLetterOrder([...sizes]) > 0
+    ? sizes
+    : orderRuns(readingUnits(normalizeDosFractions(sizes)).reverse()).join('');
+}
+
+export type DosMode = 'declared' | 'guess' | 'known-style' | 'known-drawing';
+export type Decoded = 'keyboard' | 'dos-hebrew' | null;
 
 export interface TextView {
   text: string;
@@ -233,10 +314,43 @@ export function decodeText(
   raw: string,
   mtext: boolean,
   keyboard: boolean,
+  dos?: DosMode,
 ): TextView {
   let s = mtext ? mtextPlain(raw) : raw;
   s = unicodeEscapes(controlCodes(s));
-  if (keyboard && /[a-z]/.test(s)) {
+  if (dos) {
+    let decoded = false;
+    s = s
+      .split('\n')
+      .map((line) => {
+        if (dos === 'declared' && /[א-ת]/u.test(line)) {
+          decoded = true;
+          return dosLine(line);
+        }
+        if (dos !== 'declared' && hasDosGlyphs(line, dos === 'known-style')) {
+          decoded = true;
+          return dosLine([...line].map((c) => DOS_MAP.get(c) ?? c).join(''));
+        }
+        if (dos !== 'guess' && !/[א-ת]/u.test(line)) {
+          const size = /^\s*['"]\d+(?:[./ ]\d+)*\s*$/.test(line)
+            ? normalizeSizes(line)
+            : normalizeDosFractions(line);
+          if (size !== line) {
+            decoded = true;
+            return size;
+          }
+        }
+        return line;
+      })
+      .join('\n');
+    if (decoded) return { text: s.trim(), decoded: 'dos-hebrew' };
+  }
+  if (
+    keyboard &&
+    /[a-z]/.test(s) &&
+    !/[א-ת]/u.test(s) &&
+    !/^\s*[A-Za-z][A-Za-z0-9_]*\s*=\s*[+-]?\d/.test(s)
+  ) {
     if (plausibleHebrew(keyed(s)))
       return { text: keyboardHebrew(s), decoded: 'keyboard' };
     const coded = /^(.*\S)\s*\)([A-Za-z]{1,3})\(\s*$/.exec(s.trim());

@@ -10,6 +10,8 @@ cad-axi info plan.dwg
 
 Read `units` first: with `not stated`, every length needs `--units`. Read `vertical_products` and `opaque`: objects from AutoCAD MEP or Architecture are present but unreadable, and the owner should send a copy saved with "Export to AutoCAD".
 
+Read `xrefs` for each external reference's block name, filename and folder relative to the host drawing. A folder of `.` means the host folder. Use `--full` for the complete list within the output limit.
+
 ## Which layers hold pipe, and how much?
 
 ```sh
@@ -50,7 +52,7 @@ cad-axi blocks plan.dwg
 cad-axi query plan.dwg --block HEAD --limit 3
 ```
 
-Text is shown decoded, with MTEXT codes removed. Hebrew typed on Latin keys for a Hebrew stroke font is decoded and marked; `--full` shows each text as stored.
+Text is shown decoded, with MTEXT codes removed. Use `--full` to see the raw text alongside the `keyboard` or `dos-hebrew` decoding rule when one applies.
 
 ## Look at it
 

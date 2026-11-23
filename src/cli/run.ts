@@ -80,7 +80,7 @@ export const COMMANDS: readonly CommandSpec[] = [
     args: FILE,
     flags: { units: UNITS_FLAG, full: FULL_FLAG, ...READ },
     summary:
-      'What a drawing holds: version, units, layouts, counts, what cannot be read, whether it can be edited',
+      'Drawing version, units, layouts, counts, reference locations and whether it can be edited',
     run: info,
   },
   {
@@ -119,7 +119,8 @@ export const COMMANDS: readonly CommandSpec[] = [
       save: SAVE_FLAG,
       ...READ,
     },
-    summary: 'Block definitions with insert counts and attribute tags',
+    summary:
+      'Blocks with insert counts and attribute tags. Use --full for reference locations',
     run: blocks,
   },
   {
@@ -139,7 +140,7 @@ export const COMMANDS: readonly CommandSpec[] = [
       ...READ,
     },
     summary:
-      'TEXT, MTEXT and attribute values, decoded, with handle, layer and place',
+      'Decoded TEXT, MTEXT and attributes. Use --full for raw text and the decoding rule',
     run: texts,
   },
   {

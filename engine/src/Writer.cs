@@ -77,7 +77,7 @@ internal static class Writer
     {
         if (o.Ops is null || o.Out is null) throw new EngineError("usage");
         var clock = Stopwatch.StartNew();
-        var doc = Reader.Open(o, out _, out _, out _);
+        var doc = Reader.Open(o, out _, out _, out _, out _);
         using var ops = Parse(o.Ops);
         var added = new List<(int Index, string Handle)>();
         var index = 0;

@@ -16,7 +16,7 @@ internal static class Reader
 {
     public const long MaxEntities = 2_000_000;
 
-    public static CadDocument Open(Options o, out string kind, out int errors, out int warnings)
+    public static CadDocument Open(Options o, out string kind, out bool codepageAssumed, out int errors, out int warnings)
     {
         if (o.File is null) throw new EngineError("usage");
         var info = new FileInfo(o.File);
@@ -39,17 +39,12 @@ internal static class Reader
         CadDocument doc;
         try
         {
-            doc = k == "dwg"
-                ? DwgReader.Read(o.File, new DwgReaderConfiguration
-                {
-                    KeepUnknownEntities = true,
-                    KeepUnknownNonGraphicalObjects = true,
-                }, Note)
-                : DxfReader.Read(o.File, new DxfReaderConfiguration
-                {
-                    KeepUnknownEntities = true,
-                    KeepUnknownNonGraphicalObjects = true,
-                }, Note);
+            if (k == "dwg")
+            {
+                doc = LegacyEncoding.ReadDwg(o.File, Note);
+                codepageAssumed = string.IsNullOrEmpty(doc.Header.CodePage);
+            }
+            else doc = LegacyEncoding.ReadDxf(o.File, Note, out codepageAssumed);
         }
         catch (OutOfMemoryException) { throw new EngineError("too_large"); }
         catch (EngineError) { throw; }
@@ -63,10 +58,10 @@ internal static class Reader
     public static int Run(Records rec, Options o)
     {
         var clock = Stopwatch.StartNew();
-        var doc = Open(o, out var kind, out var errors, out var warnings);
+        var doc = Open(o, out var kind, out var codepageAssumed, out var errors, out var warnings);
         Census census;
         // A model that cannot be walked is a damaged file, not an engine fault.
-        try { census = Emit(rec, doc, kind, o.Entities); }
+        try { census = Emit(rec, doc, kind, codepageAssumed, o.File!, o.Entities); }
         catch (EngineError) { throw; }
         catch (OutOfMemoryException) { throw new EngineError("too_large"); }
         catch (Exception x) { throw new EngineError("damaged", x.GetType().Name); }
@@ -82,7 +77,7 @@ internal static class Reader
         public long UnknownObjects;
     }
 
-    public static Census Emit(Records rec, CadDocument doc, string kind, bool entities)
+    private static Census Emit(Records rec, CadDocument doc, string kind, bool codepageAssumed, string file, bool entities)
     {
         // First pass: counts by layer and by block, and the kinds.
         var byLayer = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -113,7 +108,8 @@ internal static class Reader
         {
             w.WriteString("format", kind);
             w.WriteString("version", h.VersionString);
-            w.WriteString("codepage", h.CodePage);
+            w.WriteString("codepage", h.CodePage ?? "");
+            if (codepageAssumed) w.WriteBoolean("codepage_assumed", true);
             w.WriteNumber("insunits", (int)h.InsUnits);
             w.WriteNumber("measurement", (int)h.MeasurementUnits);
             Json.Point(w, "extmin", h.ModelSpaceExtMin, lenient: true);
@@ -175,6 +171,7 @@ internal static class Reader
             });
         }
 
+        var hostFolder = Path.GetDirectoryName(Path.GetFullPath(file))!;
         foreach (var b in doc.BlockRecords)
         {
             rec.Write("block", w =>
@@ -189,8 +186,14 @@ internal static class Reader
                 w.WriteBoolean("external", external);
                 w.WriteBoolean("overlay", flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefOverlay));
                 w.WriteBoolean("dependent", flags.HasFlag(ACadSharp.Blocks.BlockTypeFlags.XRefDependent));
-                // An external reference's path is never printed (protocol rules).
-                w.WriteBoolean("path_present", !string.IsNullOrEmpty(b.BlockEntity?.XRefPath));
+                var savedPath = b.BlockEntity?.XRefPath;
+                w.WriteBoolean("path_present", !string.IsNullOrEmpty(savedPath));
+                // The protocol carries only the filename and a host-relative folder.
+                if (external && ReferenceLocation(savedPath, hostFolder) is { } reference)
+                {
+                    w.WriteString("xref_file", reference.File);
+                    if (reference.Folder is not null) w.WriteString("xref_folder", reference.Folder);
+                }
                 w.WriteNumber("units", (int)b.Units);
                 w.WriteStartArray("attributes");
                 foreach (var a in b.AttributeDefinitions) w.WriteStringValue(a.Tag);
@@ -255,6 +258,48 @@ internal static class Reader
             });
         }
         return census;
+    }
+
+    // Compare paths lexically. The referenced drawing may be missing, and
+    // reading its metadata must never open or resolve any referenced file.
+    private static (string File, string? Folder)? ReferenceLocation(string? savedPath, string hostFolder)
+    {
+        if (string.IsNullOrWhiteSpace(savedPath) || savedPath.Contains('\0')) return null;
+        var path = savedPath.Replace('\\', '/');
+        var drive = path.Length >= 2 && char.IsAsciiLetter(path[0]) && path[1] == ':';
+        if (drive) path = path[2..];
+        var separator = path.LastIndexOf('/');
+        var file = path[(separator + 1)..];
+        if (file is "" or "." or ".." || file.Contains(':')) return null;
+        if (path.StartsWith("//", StringComparison.Ordinal))
+        {
+            // A UNC root has a server and a share but no filename.
+            var components = path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var extended = components is ["?", var marker, ..]
+                && marker.Equals("UNC", StringComparison.OrdinalIgnoreCase);
+            var rootParts = extended ? 4 : 2;
+            return components.Length > rootParts ? (file, null) : null;
+        }
+        if (drive || savedPath.StartsWith('\\') || path.Contains(':')) return (file, null);
+
+        if (path.StartsWith('/'))
+        {
+            var relative = Path.GetRelativePath(hostFolder, path);
+            if (Path.IsPathRooted(relative) || relative is "." or ".."
+                || relative.StartsWith("../", StringComparison.Ordinal)) return (file, null);
+            return (file, Path.GetDirectoryName(relative) is { Length: > 0 } folder ? folder : ".");
+        }
+
+        // Windows relative folders use the same dot segments as POSIX.
+        // Keep leading ".." because a reference can sit next to the host folder.
+        var parts = new List<string>();
+        foreach (var segment in path[..(separator + 1)].Split('/'))
+        {
+            if (segment is "" or ".") continue;
+            if (segment == ".." && parts.Count > 0 && parts[^1] != "..") parts.RemoveAt(parts.Count - 1);
+            else parts.Add(segment);
+        }
+        return (file, parts.Count == 0 ? "." : string.Join('/', parts));
     }
 
     public static void Finish(Records rec, Census census, int errors, int warnings, Stopwatch clock)

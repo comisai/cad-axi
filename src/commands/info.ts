@@ -8,13 +8,8 @@ import type { CommandInput } from '../cli/table.ts';
 import { AxiError, usage } from '../errors.ts';
 import { type Drawing, layoutOf, RELEASES } from '../model/drawing.ts';
 import { unitsOf } from '../model/units.ts';
-import { render } from '../output/toon.ts';
-import {
-  countLine,
-  type Row,
-  recordOutput,
-  tableRow,
-} from '../output/views.ts';
+import { bounded, render } from '../output/toon.ts';
+import { compact, countLine, type Row, tableRow } from '../output/views.ts';
 import { VERSION } from '../version.ts';
 import { preflight } from '../write/preflight.ts';
 import {
@@ -175,7 +170,14 @@ export async function info(input: CommandInput): Promise<string> {
         : units.basis === 'given'
           ? 'given with --units'
           : 'unknown: pass --units to measure',
-    ...(pre2007 ? { codepage: d.header.codepage } : {}),
+    ...(pre2007
+      ? {
+          codepage: d.header.codepage,
+          codepage_basis: d.header.codepage_assumed
+            ? 'assumed Windows-1252; declaration missing or unrecognized'
+            : null,
+        }
+      : {}),
     extents:
       d.header.extmin &&
       d.header.extmax &&
@@ -224,11 +226,30 @@ export async function info(input: CommandInput): Promise<string> {
   if (units.metres === null)
     help.push('Run `cad-axi measure <file> --units mm` once you know the unit');
   else help.push('Run `cad-axi measure <file>` for lengths by layer');
-  return recordOutput(
-    doc,
+  return bounded(
+    {
+      total: xrefs.length,
+      narrower: '`cad-axi blocks <file> --match <name> --full`',
+      build: (shown, fieldLimit) => {
+        const record = compact(doc, fieldLimit) as Row;
+        if (shown)
+          record.xrefs = xrefs.slice(0, shown).map((ref) =>
+            tableRow(
+              {
+                name: ref.name,
+                file: ref.xref_file,
+                folder: ref.xref_folder,
+              },
+              ['name', 'file', 'folder'],
+              fieldLimit,
+            ),
+          );
+        if (shown < xrefs.length)
+          record.xrefs_shown = `${shown} of ${xrefs.length}. Use --full or cad-axi blocks <file> --match <name> --full.`;
+        return render(record, help);
+      },
+    },
     input.values.full === true,
-    '`cad-axi info <file>`',
-    help,
   );
 }
 

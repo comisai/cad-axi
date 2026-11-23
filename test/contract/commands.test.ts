@@ -62,10 +62,13 @@ for (const file of ['plan.dwg', 'plan.dxf']) {
         /^1: BASE \(listed, never opened\)$/,
       );
       assert.equal(doc.editable, 'yes');
+      assert.deepEqual(rowsOf(doc, 'xrefs'), [
+        { name: 'BASE', file: 'base.dwg', folder: null },
+      ]);
       assert.doesNotMatch(
         JSON.stringify(doc),
-        /made-up|base\.dwg/,
-        'the reference path is never printed',
+        /made-up/,
+        'the absolute folder is withheld',
       );
     });
 
@@ -82,11 +85,12 @@ for (const file of ['plan.dwg', 'plan.dxf']) {
     });
 
     it('blocks: insert counts and attribute tags', async () => {
-      const rows = rowsOf(await ok('blocks', file), 'blocks');
+      const rows = rowsOf(await ok('blocks', file, '--full'), 'blocks');
       const head = rows.find((r) => r.name === 'HEAD');
       assert.equal(head?.inserts, ANSWERS.headInserts);
       assert.equal(head?.attributes, 'SIZE');
       assert.equal(rows.find((r) => r.name === 'BASE')?.kind, 'xref');
+      assert.equal(rows.find((r) => r.name === 'BASE')?.file, 'base.dwg');
     });
 
     it('texts: decoded, Hebrew kept, keyboard Hebrew decoded, overrides escaped', async () => {

@@ -128,6 +128,9 @@ export async function blocks(input: CommandInput): Promise<string> {
       inserts: inserts.get(b.name) ?? 0,
       entities: b.entities,
       attributes: b.attributes.join(', ') || null,
+      ...(b.external
+        ? { file: b.xref_file ?? null, folder: b.xref_folder ?? null }
+        : {}),
     }))
     .sort((a, b) => b.inserts - a.inserts || a.name.localeCompare(b.name));
   const limit = positiveInt(input.values, 'limit', 20);
@@ -141,7 +144,14 @@ export async function blocks(input: CommandInput): Promise<string> {
       : '0 blocks',
     head: saved ? { saved } : {},
     rows: shown,
-    columns: ['name', 'kind', 'inserts', 'entities', 'attributes'],
+    columns: [
+      'name',
+      'kind',
+      'inserts',
+      'entities',
+      'attributes',
+      ...(full && shown.some((row) => 'file' in row) ? ['file', 'folder'] : []),
+    ],
     help: rows.length
       ? [
           'Run `cad-axi query <file> --block <name>` for where one block is inserted',
@@ -199,6 +209,13 @@ export async function texts(input: CommandInput): Promise<string> {
     texts: items.map((t) => ({ ...t, at: t.at })),
   });
   const keyboard = items.filter((t) => t.decoded === 'keyboard').length;
+  const dos = items.filter((t) => t.decoded === 'dos-hebrew').length;
+  const notes = [
+    keyboard
+      ? `${keyboard} texts were typed on Latin keys for a Hebrew stroke font and are shown decoded`
+      : '',
+    dos ? `${dos} texts were decoded as DOS Hebrew` : '',
+  ].filter(Boolean);
   return listOutput({
     key: 'texts',
     summary: items.length
@@ -206,9 +223,9 @@ export async function texts(input: CommandInput): Promise<string> {
       : '0 texts match',
     head: {
       space,
-      ...(keyboard
+      ...(notes.length
         ? {
-            note: `${keyboard} texts were typed on Latin keys for a Hebrew stroke font and are shown decoded; --full shows each as stored`,
+            note: `${notes.join('. ')}. Use --full to see the raw text and decoding rule.`,
           }
         : {}),
       ...(saved ? { saved } : {}),

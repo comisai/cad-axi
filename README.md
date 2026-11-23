@@ -26,7 +26,7 @@ npm install -g cad-axi
 cad-axi
 ```
 
-It runs on Linux on x64 and arm64, with Node 22.18 or later. The engine for both platforms is inside the package; nothing is downloaded and no .NET runtime is needed.
+It runs on Linux on x64 and arm64, with Node 22.18 or later and glibc 2.38 or later. The package includes the engine for both platforms and needs no .NET runtime.
 
 ## How it works
 
@@ -52,6 +52,8 @@ cad-axi version                          the package, engine and ACadSharp versi
 ```
 
 `cad-axi help <command>` gives each command's flags. Lengths are printed in metres when the drawing states its units; with none, pass `--units`.
+
+`cad-axi info <file> --full` lists external drawing references with their filenames and folders relative to the host drawing where known. It reads the reference metadata from the host drawing. `cad-axi texts <file> --full` shows the raw text and identifies legacy Hebrew decoding.
 
 ## Rules it keeps
 
