@@ -26,7 +26,7 @@ npm install -g cad-axi
 cad-axi
 ```
 
-It runs on Linux on x64 and arm64, with Node 22.18 or later. The engine for both platforms is inside the package; nothing is downloaded and no .NET runtime is needed.
+It runs on Linux on x64 and arm64, with Node 22.18 or later and glibc 2.38 or later. The package includes the engine for both platforms and needs no .NET runtime.
 
 ## How it works
 
@@ -54,6 +54,8 @@ cad-axi version                          the package, engine and ACadSharp versi
 `cad-axi help <command>` gives each command's flags. Takeoffs measure plan length in world XY. Pass `--3d` to measure in XYZ and check `length_mode` in the result.
 
 `cad-axi info <file>` shows the declared insertion units, dimension measurements and text, viewport ratios, and reference scales. When the drawing states no unit, confirm it from the evidence or with the drawing owner and pass `--units`. Takeoff lengths are printed in metres once the unit is known.
+
+`cad-axi info <file> --full` lists external drawing references with their filenames and folders relative to the host drawing where known. It reads the reference metadata from the host drawing. `cad-axi texts <file> --full` shows the raw text and identifies legacy Hebrew decoding.
 
 ## Rules it keeps
 

@@ -78,12 +78,12 @@ The front end is expected at about 6,000 lines, the engine at about 1,500, and t
 | Module | Takes | Gives | Never |
 | --- | --- | --- | --- |
 | `engine/platform` | `process.platform`, `process.arch` | The engine's path, or `unsupported_platform` | Downloads anything |
-| `engine/spawn` | a verb, arguments, limits | Records as they arrive, an exit status | Lets the engine outlive `COMIS_DEADLINE`; passes the environment through unfiltered |
+| `engine/spawn` | a verb, arguments, limits | Records, an exit status, and a platform error when the loader reports a missing glibc version | Passes engine stderr or the caller's environment through |
 | `engine/protocol` | engine output lines | Typed records | Accepts an unknown protocol version, an unknown record type or a line over 1 MiB |
 | `model/reduce` | records, a view | Rows for that view | Holds the whole model when the view does not need it |
 | `model/geometry` | an entity record | Length, bounding box, points in world coordinates | Guesses a missing value |
 | `model/units` | the header, `--units` | A factor to metres, or `units_unknown` | Assumes millimetres |
-| `model/text` | a stored string, its style, the code page | `text` beside `raw`, and how it was decoded | Changes `raw`; reverses text |
+| `model/text` | a stored string, its style, the code page | `text` beside `raw`, with the legacy text decoding rule when one applies | Changes `raw` |
 | `takeoff/runs`, `sizes` | entities on chosen layers, size labels, a reach | Runs with ends, length, size and basis | Sizes a run from a label of another group; joins across a corner |
 | `picture/svg` | entities, texts, a box | SVG text | Copies anything but escaped text and numbers from the file |
 | `write/schema` | a JSON file | A validated specification or list of operations, or `invalid_spec` naming the field | Accepts external references, images, OLE objects, fields, data links or paths |
@@ -107,7 +107,7 @@ The engine prints one JSON object a line. Every object has `"p": 1` (the protoco
 {"p":1,"type":"entity","h":"1A2","kind":"LWPOLYLINE","layer":"SAN","space":"Model","owner":null,"color":256,"linetype":"ByLayer","pts":[[0,0],[1000,0],[1000,500]],"bulges":[0,0.4142,0],"closed":false,"normal":[0,0,1]}
 {"p":1,"type":"entity","h":"1B0","kind":"INSERT","layer":"F","space":"Model","block":"HEAD","at":[2500,800,0],"scale":[1,1,1],"rotation":0,"normal":[0,0,1],"attribs":[{"tag":"SIZE","raw":"1/2\""}]}
 {"p":1,"type":"entity","h":"1C4","kind":"MTEXT","layer":"NOTES","space":"Model","style":"HEB","raw":"\\fArial|b0;...","at":[100,200,0],"height":250,"rotation":0}
-{"p":1,"type":"external","kind":"xref","name":"BASE","path_present":true}
+{"p":1,"type":"block","name":"BASE","external":true,"path_present":true,"xref_file":"base.dwg","xref_folder":"consultants"}
 {"p":1,"type":"class","name":"AcDbZombieEntity","count":12,"modelled":false}
 {"p":1,"type":"end","entities":18234,"skipped":12,"ms":840}
 {"p":1,"type":"error","code":"damaged"}
@@ -116,7 +116,8 @@ The engine prints one JSON object a line. Every object has `"p": 1` (the protoco
 Rules:
 - Handles are hexadecimal strings, as AutoCAD writes them.
 - Coordinates are numbers in drawing units. Non-finite values are an engine error, never printed.
-- An external reference's path is never printed; `path_present` says only that one exists.
+- External reference blocks carry `path_present`, optional `xref_file` (filename), and optional `xref_folder` (folder relative to the host drawing, using `/` separators). A saved absolute path stays inside the engine. A native absolute path inside the host folder can supply a relative folder. Image and PDF records carry `path_present` only.
+- A legacy header can carry `codepage_assumed: true` when the reader fell back to Windows-1252. The text view may identify DOS Hebrew separately.
 - Text is printed as stored, in JSON string escapes. The front end applies text safety.
 - `write` and `edit` read their input from the JSON file the front end wrote, and print the same records for the new file after writing it, so `verify` can compare without a second parse in the same process. `verify` still re-reads the file in a fresh process (design §8.9).
 
@@ -147,11 +148,11 @@ Rules:
 | Task | What | Done when |
 | --- | --- | --- |
 | T11 | Front end runtime from `drawing-axi`: command table, strict parsing, TOON bounds, text safety, errors, deadline | The AXI principle tests pass on a stub command |
-| T12 | Engine bridge: platform selection, spawn under limits, protocol validation | A garbage line, an unknown version, a crash and a hang each map to their codes |
+| T12 | Engine bridge with platform selection, spawn under limits and protocol validation | Junk output, unknown protocol versions, crashes, hangs and missing glibc versions map to their codes |
 | T13 | The full `read` verb: entities with geometry, blocks, inserts with attributes, texts with styles, external references and images as metadata | The sample drawing's records equal its known answers |
 | T14 | Home view, `info`, `version` | Exact output on the sample; `editable` with its reason |
 | T15 | `layers`, `blocks` | Exact counts and lengths on the sample |
-| T16 | `texts` and text decoding: MTEXT codes, `%%` codes, `\U+` escapes, code pages, Hebrew SHX on Latin keys | Every rule in design §8.3 has a test, and the Latin texts that must not change |
+| T16 | `texts` decodes MTEXT and control codes, honors code pages, and handles DOS Hebrew and Hebrew SHX on Latin keys | Invented drawings cover code-page declarations, missing declarations, visual and logical Hebrew, and fraction order. Latin labels stay in order |
 | T17 | `query` | Each filter alone and combined; handles match `info` |
 
 ### M4: measuring, pictures, comparing

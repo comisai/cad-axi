@@ -106,6 +106,21 @@ export interface EngineResult {
   last: EngineRecord;
 }
 
+function missingGlibc(stderr: string): string | undefined {
+  let required: string | undefined;
+  for (const match of stderr.matchAll(
+    /version [`']GLIBC_(\d+\.\d+(?:\.\d+)?)' not found\b/g,
+  )) {
+    const version = match[1] as string;
+    if (
+      !required ||
+      version.localeCompare(required, 'en', { numeric: true }) > 0
+    )
+      required = version;
+  }
+  return required;
+}
+
 const MESSAGES: Partial<Record<ErrorCode, string>> = {
   not_found: 'No file at that path.',
   not_cad:
@@ -184,7 +199,7 @@ export function runEngine(
   const limit = Math.max(1, Math.floor(remaining));
   return new Promise((resolve, reject) => {
     const child = spawn(engine, [...args, '--time-limit-ms', String(limit)], {
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
       // Only what the engine needs: never the caller's environment.
       env: {
         DOTNET_GCHeapHardLimit: heapLimit().toString(16),
@@ -193,6 +208,7 @@ export function runEngine(
     });
     const records: EngineRecord[] = [];
     let buffer = '';
+    let stderr = '';
     let failure: AxiError | null = null;
     let killed = false;
     const fail = (error: AxiError) => {
@@ -261,6 +277,12 @@ export function runEngine(
       options.onRecord?.(r);
     };
     child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stderr.on('data', (chunk: string) => {
+      // Collect just enough to recognize startup errors. Diagnostics can
+      // include local paths and are never printed.
+      stderr += chunk.slice(0, 4096 - stderr.length);
+    });
     child.stdout.on('data', (chunk: string) => {
       if (failure) return;
       buffer += chunk;
@@ -309,6 +331,16 @@ export function runEngine(
         return;
       }
       if (code !== 0 || !last) {
+        const glibc = code && !last ? missingGlibc(stderr) : undefined;
+        if (glibc) {
+          reject(
+            new AxiError(
+              'unsupported_platform',
+              `This cad-axi engine needs glibc ${glibc} or later.`,
+            ),
+          );
+          return;
+        }
         reject(
           new AxiError(
             'engine_failed',

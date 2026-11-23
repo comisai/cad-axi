@@ -12,6 +12,8 @@ Read `declared_units` first. When it says `not stated`, compare a dimension's dr
 
 `cad-axi query <file> --space all --type DIMENSION --type VIEWPORT --type INSERT` shows the underlying entities and handles. Read `vertical_products` and `opaque` to check whether the owner needs to send an "Export to AutoCAD" copy for objects the tool cannot read.
 
+Read `xrefs` for each external reference's block name, filename and folder relative to the host drawing. A folder of `.` means the host folder. Use `--full` for the complete list within the output limit.
+
 ## Which layers hold pipe, and how much?
 
 ```sh
@@ -54,7 +56,7 @@ cad-axi blocks plan.dwg
 cad-axi query plan.dwg --block HEAD --limit 3
 ```
 
-Text is shown decoded, with MTEXT codes removed. Hebrew typed on Latin keys for a Hebrew stroke font is decoded and marked; `--full` shows each text as stored.
+Text is shown decoded, with MTEXT codes removed. Use `--full` to see the raw text alongside the `keyboard` or `dos-hebrew` decoding rule when one applies.
 
 ## Look at it
 

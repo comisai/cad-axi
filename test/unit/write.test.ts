@@ -461,12 +461,35 @@ describe('the engine bridge', () => {
       'internal_error',
     );
     assert.equal(await run(`echo '{"p":1,"type":"end","entities":0}'`), 'ok');
-    assert.equal(await run('sleep 30', Date.now() + 300), 'timed_out');
+    assert.equal(await run('exec sleep 30', Date.now() + 300), 'timed_out');
   });
 
   it('refuses a line over the limit', async () => {
     assert.equal(
       await run(`head -c 1100000 /dev/zero | tr '\\0' 'a'`),
+      'engine_failed',
+    );
+  });
+
+  it('names the missing glibc version without exposing loader stderr', async () => {
+    const diagnostic = ['2.34', '2.38']
+      .map(
+        (version) =>
+          `/invented/engine: /invented/libc.so.6: version \`GLIBC_${version}' not found (required by /invented/engine)`,
+      )
+      .join('\n');
+    await assert.rejects(
+      runEngine(['probe'], {
+        engine: fake(`cat >&2 <<'LOADER'\n${diagnostic}\nLOADER\nexit 1`),
+        now: () => Date.now(),
+      }),
+      (error: AxiError) =>
+        error.code === 'unsupported_platform' &&
+        /glibc 2\.38 or later/.test(error.message) &&
+        !error.message.includes('/invented/'),
+    );
+    assert.equal(
+      await run("echo 'random stderr' >&2; exit 1"),
       'engine_failed',
     );
   });

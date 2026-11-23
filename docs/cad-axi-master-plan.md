@@ -176,7 +176,7 @@ After the first release, the token can be narrowed to this package or replaced b
 | K2 | AutoCAD asks to recover files the tool writes | Medium | High: owners stop trusting writes | AC1032 by default; the human check per release; the overlay; L8 | Developer, owner |
 | K3 | An edit silently loses objects | Medium | High | The verified class list refuses anything unproven; the verify loop compares every untouched entity | Developer |
 | K4 | The owner's drawings hold mostly vertical-product objects no engine reads | Medium | High: little to measure | `info` says so first; the skill asks for an "Export to AutoCAD" copy; M2's private pass measures it early | Developer, owner |
-| K5 | Hebrew text decodes wrongly in older files | Medium | Medium | Q2 settled in M2; `raw` kept beside `text`; decoding reported, never silent | Developer |
+| K5 | Hebrew text decodes wrongly in legacy stroke fonts | Medium | Medium | Tests cover declared code pages, DOS Hebrew in Unicode stroke labels, logical and visual order, and fractions. `--full` shows the raw text and decoding rule | Developer |
 | K6 | A hostile file crashes or exhausts the engine | Medium | Medium | Managed code; a child process under input, heap and time limits; hostile set and fuzzing | Developer |
 | K7 | A drawing's text steers the model | Low | Medium | Text safety; the skill treats text as data | Developer |
 | K8 | ACadSharp's single maintainer stops | Low | Medium | The protocol and tests allow a switch to acadrust (design §4.2) | Developer |

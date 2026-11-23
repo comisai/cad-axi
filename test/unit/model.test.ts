@@ -260,10 +260,17 @@ describe('text', () => {
       'F-Ø3"',
       'DN100',
       'see note 4',
+      'Q= 30 m \\h',
       'UP',
       'CW1',
     ])
       assert.equal(decodeText(t, false, true).text, t, t);
+  });
+
+  it('keeps logical Hebrew and size labels in reading order', () => {
+    assert.equal(decodeText('משאבה 4/8"', false, false).text, 'משאבה 4/8"');
+    assert.equal(decodeText('chuc "8/4', false, true).text, 'ביוב 4/8"');
+    assert.equal(decodeText('chuc 4/8"', false, true).text, 'ביוב 4/8"');
   });
 
   it('a keyboard style is chosen by its font or by most of its texts', () => {

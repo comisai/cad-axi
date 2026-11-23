@@ -4,7 +4,15 @@
 
 import type { Attrib, Drawing, Entity, P3 } from './drawing.ts';
 import { apply, applyVec, type Mat, norm, ocs, then } from './geometry.ts';
-import { type Decoded, decodeText, keyboardStyles } from './text.ts';
+import {
+  type Decoded,
+  type DosMode,
+  decodeText,
+  hasDosGlyphs,
+  keyboardStyles,
+  mtextPlain,
+  unicodeEscapes,
+} from './text.ts';
 import { walk } from './world.ts';
 
 export interface TextItem {
@@ -57,6 +65,42 @@ export function collectTexts(
       samples.push({ style: a.style, raw: a.raw });
   }
   const keyboard = keyboardStyles(d.styles, samples);
+  const declaredDos = /^(?:DOS|CP|IBM|ANSI)_?862$/i.test(
+    d.header.codepage?.trim() ?? '',
+  );
+  const legacy = d.header.version < 'AC1021';
+  const missingCodepage = d.header.codepage_assumed || !d.header.codepage;
+  const shx = new Set(
+    d.styles.filter((s) => s.kind === 'shx').map((s) => s.name),
+  );
+  const mayGuessDos = (style: string) =>
+    legacy ? missingCodepage : shx.has(style);
+  const dosStyles = new Set(
+    samples
+      .filter(
+        (s) => mayGuessDos(s.style) && hasDosGlyphs(unicodeEscapes(s.raw)),
+      )
+      .map((s) => s.style),
+  );
+  for (const e of d.entities) {
+    const style = e.style ?? '';
+    if (
+      e.kind === 'MTEXT' &&
+      e.raw &&
+      !dosStyles.has(style) &&
+      mayGuessDos(style) &&
+      mtextPlain(e.raw)
+        .split('\n')
+        .some((line) => hasDosGlyphs(unicodeEscapes(line)))
+    )
+      dosStyles.add(style);
+  }
+  const dosMode = (style: string): DosMode | undefined => {
+    if (legacy && declaredDos) return 'declared';
+    if (!mayGuessDos(style)) return undefined;
+    if (dosStyles.has(style)) return 'known-style';
+    return dosStyles.size ? 'known-drawing' : 'guess';
+  };
   const backwardsStyle = new Set(
     d.styles.filter((s) => s.backwards).map((s) => s.name),
   );
@@ -76,6 +120,7 @@ export function collectTexts(
       raw,
       kind === 'MTEXT',
       kind !== 'MTEXT' && keyboard.has(style),
+      dosMode(style),
     );
     // MTEXT is placed in world coordinates; TEXT and attributes in their OCS.
     const local = kind === 'MTEXT' ? ocs(undefined) : ocs(e.n);

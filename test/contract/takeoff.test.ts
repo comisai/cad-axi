@@ -180,7 +180,9 @@ it('info and query expose header, dimension, viewport and reference unit evidenc
     String(rows.filter((r) => r.kind === 'VIEWPORT')[1]?.detail),
     /Sheet.*paper\/model 0.05/,
   );
-  assert.doesNotMatch(JSON.stringify(info), /never-opened\.dwg/);
+  assert.deepEqual(rowsOf(info, 'xrefs'), [
+    { name: 'GRID', file: 'never-opened.dwg', folder: '.' },
+  ]);
 });
 
 it('makes the unit behind an unlabelled reference scale conditional', async () => {
