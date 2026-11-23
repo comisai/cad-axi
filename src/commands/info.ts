@@ -7,6 +7,7 @@ import { runEngine } from '../bridge/engine.ts';
 import type { CommandInput } from '../cli/table.ts';
 import { AxiError, usage } from '../errors.ts';
 import { type Drawing, layoutOf, RELEASES } from '../model/drawing.ts';
+import { unitEvidence } from '../model/unit-evidence.ts';
 import { unitsOf } from '../model/units.ts';
 import { bounded, render } from '../output/toon.ts';
 import { compact, countLine, type Row, tableRow } from '../output/views.ts';
@@ -141,8 +142,9 @@ export async function home(input: CommandInput): Promise<string> {
 export async function info(input: CommandInput): Promise<string> {
   const file = input.positionals[0];
   if (!file) throw usage('Missing <file>.');
-  const { name, bytes, drawing: d } = await load(input, file, false);
+  const { name, bytes, drawing: d } = await load(input, file, 'units');
   const units = unitsOf(d.header.insunits, str(input.values, 'units'));
+  const declared = unitsOf(d.header.insunits, undefined);
   const layouts = d.header.layouts.map((l) => {
     const block = d.blocks.get(l.block);
     return `${l.name} (${block?.entities ?? 0})`;
@@ -164,12 +166,24 @@ export async function info(input: CommandInput): Promise<string> {
     release: release(d.header.version),
     bytes,
     units: units.name ?? 'not stated',
+    declared_units: declared.name ?? 'not stated',
     units_basis:
       units.basis === 'file'
         ? 'stated by the file'
         : units.basis === 'given'
           ? 'given with --units'
           : 'unknown: pass --units to measure',
+    unit_header: {
+      insunits: d.header.insunits,
+      measurement_code: d.header.measurement,
+      measurement:
+        d.header.measurement === 1
+          ? 'metric'
+          : d.header.measurement === 0
+            ? 'imperial'
+            : 'unknown',
+    },
+    unit_evidence: unitEvidence(d, input.values.full === true),
     ...(pre2007
       ? {
           codepage: d.header.codepage,

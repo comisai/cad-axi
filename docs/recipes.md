@@ -8,7 +8,9 @@ Questions a worker asks about a drawing, and the commands that answer them. Each
 cad-axi info plan.dwg
 ```
 
-Read `units` first: with `not stated`, every length needs `--units`. Read `vertical_products` and `opaque`: objects from AutoCAD MEP or Architecture are present but unreadable, and the owner should send a copy saved with "Export to AutoCAD".
+Read `declared_units` first. When it says `not stated`, compare a dimension's drawn length with its text and check the reference scales in `unit_evidence`. A reference scaled by 100 implies centimetres in the host if the reference is drawn in metres. Confirm the unit when the evidence is inconclusive or conflicts, then pass it with `--units`.
+
+`cad-axi query <file> --space all --type DIMENSION --type VIEWPORT --type INSERT` shows the underlying entities and handles. Read `vertical_products` and `opaque` to check whether the owner needs to send an "Export to AutoCAD" copy for objects the tool cannot read.
 
 Read `xrefs` for each external reference's block name, filename and folder relative to the host drawing. A folder of `.` means the host folder. Use `--full` for the complete list within the output limit.
 
@@ -20,6 +22,8 @@ cad-axi measure plan.dwg --layer SAN --layer RAIN
 ```
 
 `in_blocks` is the part drawn inside block inserts, such as fittings. Layers that are off or frozen are left out and counted in `left_out`; `--all` includes them.
+
+`length_mode` reports plan (XY) by default. Use `--3d` when the task calls for sloped lengths or vertical rises. `z_span` gives the elevation spread in drawing units, and `z_dominant_entities` counts entities whose own Z span is more than ten times their XY length.
 
 ## Leave the legend out
 

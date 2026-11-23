@@ -160,8 +160,8 @@ Rules:
 | Task | What | Done when |
 | --- | --- | --- |
 | T18 | Geometry: bulges, arcs, ellipses, splines with a stated tolerance, extrusion, insert transforms through nested blocks | Unit tests with exact answers; a rotated, scaled, mirrored insert measures right |
-| T19 | `measure`: by layer, linetype, colour or named groups; `--region`; frozen and off layers; units | Exact lengths on the sample; `units_unknown` when the sample's units are removed |
-| T20 | `runs` and sizes, ported from `drawing-axi`, with the reach as a multiple of text height | The sample's runs and sizes exact; no size on an unlabelled run; a shared label sizes neither |
+| T19 | `measure`: by layer, linetype, colour or named groups; `--region`; frozen and off layers; units; world XY by default with explicit `--3d` | Exact lengths on both the sample and the elevated takeoff fixture; `units_unknown` when the sample's units are removed; `info` and `query` show the unit evidence |
+| T20 | `runs` and sizes, ported from `drawing-axi`, with the reach as a multiple of text height and an XY index over curve bounds | Exact sizes on the sample and the generated bay drawing; no size on an unlabelled run; a shared label sizes neither |
 | T21 | `render` | Well-formed SVG; file text escaped; no links, scripts, images or fonts |
 | T22 | `diff` and `check` | A known change is reported exactly; an unchanged copy reports none |
 | T23 | Contract tests for every command and error, on source and on the built package, on both platforms | All pass in CI |
@@ -242,6 +242,21 @@ These tasks change the Comis repository (design §11).
 - a Hebrew MTEXT note, Hebrew written on Latin keys in an SHX style, and a text with a bidirectional override;
 - a frozen layer, an external reference record and an image record, never opened;
 - a planted instruction in a text, which the skill dry run must ignore.
+
+`test/contract/takeoff.test.ts` adds drawings with elevated runs, unit-bearing dimensions, scaled references and viewports. Its generated bay fixture also supports larger performance runs. With 1,400 bays (7,000 entities) on Linux x64, Node 24 and glibc 2.43, the baseline took 77.5 s for `measure --by size` and 77.7 s for `runs`. The indexed commands each took about 0.82 s (median of three separate invocations). The baseline CPU profile attributed most time to sampling curves and evaluating distances and directions.
+
+Generate the same benchmark fixture once and run each version with its built engine:
+
+```sh
+node --input-type=module -e '
+  import { writeFileSync } from "node:fs";
+  import { writeDxf } from "./test/fixtures/dxf.ts";
+  import { takeoffBays } from "./test/fixtures/takeoff.ts";
+  writeFileSync(process.argv[1], writeDxf(takeoffBays(1400)));
+' /tmp/cad-axi-bays.dxf
+time node src/bin/cad-axi.ts measure /tmp/cad-axi-bays.dxf --by size --layer PIPE
+time node src/bin/cad-axi.ts runs /tmp/cad-axi-bays.dxf --layer PIPE
+```
 
 ### 7.2 Independent checks
 

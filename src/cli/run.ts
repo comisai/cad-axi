@@ -66,6 +66,10 @@ const AS: FlagSpec = {
   summary: 'Output version, default 2018',
 };
 const READ = { 'max-bytes': MAX_BYTES_FLAG };
+const THREE_D: FlagSpec = {
+  type: 'boolean',
+  summary: 'Measure 3D length in XYZ. The default is plan length in XY.',
+};
 
 export const COMMANDS: readonly CommandSpec[] = [
   {
@@ -95,6 +99,7 @@ export const COMMANDS: readonly CommandSpec[] = [
       space: SPACE_FLAG,
       region: REGION_FLAG,
       units: UNITS_FLAG,
+      '3d': THREE_D,
       limit: LIMIT_FLAG,
       full: FULL_FLAG,
       save: SAVE_FLAG,
@@ -167,6 +172,7 @@ export const COMMANDS: readonly CommandSpec[] = [
         summary: 'One entity by its handle',
       },
       region: REGION_FLAG,
+      '3d': THREE_D,
       space: {
         ...SPACE_FLAG,
         summary: 'Model space, the default, a layout by name, or all',
@@ -196,6 +202,7 @@ export const COMMANDS: readonly CommandSpec[] = [
       region: REGION_FLAG,
       space: SPACE_FLAG,
       units: UNITS_FLAG,
+      '3d': THREE_D,
       all: ALL_FLAG,
       limit: LIMIT_FLAG,
       full: FULL_FLAG,
@@ -222,6 +229,7 @@ export const COMMANDS: readonly CommandSpec[] = [
       region: REGION_FLAG,
       space: SPACE_FLAG,
       units: UNITS_FLAG,
+      '3d': THREE_D,
       all: ALL_FLAG,
       limit: LIMIT_FLAG,
       full: FULL_FLAG,

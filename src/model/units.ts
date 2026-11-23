@@ -61,12 +61,22 @@ export function unitsOf(insunits: number, given: string | undefined): Units {
   return { name: found[0], metres: found[1], basis: 'file' };
 }
 
+/** A unit supported by --units whose conversion matches the evidence. */
+export function matchingUnit(
+  metres: number,
+  tolerance: number,
+): string | undefined {
+  return Object.entries(GIVEN).find(
+    ([, factor]) => Math.abs(metres / factor - 1) <= tolerance,
+  )?.[0];
+}
+
 /** Metres per unit, or `units_unknown`. */
 export function needMetres(u: Units): number {
   if (u.metres === null)
     throw new AxiError(
       'units_unknown',
-      'The drawing states no units. Read them from the title block or a dimension, then pass --units mm, cm, m, in or ft.',
+      'The drawing states no units. Run `cad-axi info <file>` for dimension and scale evidence, then pass --units mm, cm, m, in or ft.',
     );
   return u.metres;
 }

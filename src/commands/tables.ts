@@ -2,13 +2,21 @@
 
 import type { CommandInput } from '../cli/table.ts';
 import { AxiError, usage } from '../errors.ts';
-import type { Entity } from '../model/drawing.ts';
+import { type Drawing, type Entity, layoutOf } from '../model/drawing.ts';
 import { apply, lengthIn, ocs, primLength } from '../model/geometry.ts';
 import { collectTexts, type TextItem } from '../model/texts.ts';
+import { insertScale, viewportScale } from '../model/unit-evidence.ts';
 import { metres, unitsOf } from '../model/units.ts';
 import { walk } from '../model/world.ts';
 import { listOutput, type Row } from '../output/views.ts';
-import { CURVES, piecesOf, worldPrims } from '../takeoff/lengths.ts';
+import {
+  CURVES,
+  elevationFields,
+  elevationOf,
+  lengthMode,
+  piecesOf,
+  worldPrims,
+} from '../takeoff/lengths.ts';
 import {
   at,
   layerState,
@@ -47,12 +55,21 @@ export async function layers(input: CommandInput): Promise<string> {
   const { owners, name: space } = spaceOf(d, input.values);
   const region = regionOf(input.values);
   const match = str(input.values, 'match')?.toLowerCase();
-  const { pieces } = piecesOf(d, owners, region, { all: true });
+  const selectedLayers = d.layers.filter(
+    (l) => match === undefined || l.name.toLowerCase().includes(match),
+  );
+  const spatial = input.values['3d'] === true;
+  const { pieces, elevation } = piecesOf(d, owners, region, {
+    all: true,
+    spatial,
+    ...(match === undefined
+      ? {}
+      : { layers: new Set(selectedLayers.map((l) => l.name)) }),
+  });
   const length = new Map<string, number>();
   for (const p of pieces)
     length.set(p.item.layer, (length.get(p.item.layer) ?? 0) + p.length);
-  const all = d.layers
-    .filter((l) => match === undefined || l.name.toLowerCase().includes(match))
+  const all = selectedLayers
     .map((l) => {
       const raw = length.get(l.name) ?? 0;
       return {
@@ -74,7 +91,14 @@ export async function layers(input: CommandInput): Promise<string> {
   const limit = positiveInt(input.values, 'limit', 20);
   const full = input.values.full === true;
   const shown = full ? all : all.slice(0, limit);
-  const saved = save(input.io, str(input.values, 'save'), { layers: all });
+  const geometry = {
+    length_mode: lengthMode(spatial),
+    ...elevationFields(elevation),
+  };
+  const saved = save(input.io, str(input.values, 'save'), {
+    ...geometry,
+    layers: all,
+  });
   const unit =
     units.metres === null
       ? 'drawing units (the file states none)'
@@ -87,6 +111,7 @@ export async function layers(input: CommandInput): Promise<string> {
     head: {
       space,
       lengths: unit,
+      ...geometry,
       ...(region ? { region: str(input.values, 'region') } : {}),
       ...(saved ? { saved } : {}),
     },
@@ -275,13 +300,56 @@ function anchor(e: Entity): readonly number[] | undefined {
   return undefined;
 }
 
-function detail(e: Entity, length: number | null): string | null {
+function detail(
+  d: Drawing,
+  e: Entity,
+  length: number | null,
+  z: string,
+): string | null {
   if (length !== null && e.kind !== 'CIRCLE')
-    return `length ${round(length, 3)}`;
+    return `length ${round(length, 3)}${z}`;
   if (e.kind === 'CIRCLE' && e.r !== undefined)
-    return `radius ${round(e.r, 3)}`;
-  if (e.kind === 'INSERT')
-    return `block ${e.block ?? ''}${e.attribs?.length ? `, ${e.attribs.length} attributes` : ''}`;
+    return `radius ${round(e.r, 3)}${z}`;
+  if (e.kind === 'INSERT') {
+    const scale = insertScale(e);
+    const block = e.block ? d.blocks.get(e.block) : undefined;
+    const units = unitsOf(block?.units ?? 0, undefined).name ?? 'not stated';
+    return [
+      `block ${e.block ?? ''}`,
+      ...(scale ? [`scale ${scale.join(',')}`] : []),
+      ...(block?.external ? [`reference units ${units}`] : []),
+      ...(e.attribs?.length ? [`${e.attribs.length} attributes`] : []),
+    ].join(', ');
+  }
+  if (e.kind === 'DIMENSION') {
+    const m = e.measurement;
+    return [
+      m === undefined
+        ? 'measurement unavailable'
+        : e.measurement_kind === 'length'
+          ? `drawn ${round(m, 6)}`
+          : `measurement ${round(m, 6)}${e.measurement_kind === 'angle' ? ' rad' : ''}`,
+      ...(e.dimension_factor === undefined
+        ? []
+        : [`display factor ${e.dimension_factor}`]),
+      ...(e.dimension_suffix ? [`style suffix ${e.dimension_suffix}`] : []),
+      `text ${e.text || '<>'}`,
+    ].join(', ');
+  }
+  if (e.kind === 'VIEWPORT') {
+    const ratio = viewportScale(e);
+    const layout = layoutOf(d, e.owner);
+    return [
+      ...(layout ? [layout] : []),
+      ...(e.w !== undefined && e.ht !== undefined
+        ? [`paper ${e.w} × ${e.ht}`]
+        : []),
+      ...(e.view_height === undefined ? [] : [`view height ${e.view_height}`]),
+      ...(ratio === undefined
+        ? []
+        : [`paper/model ${Number(ratio.toPrecision(8))}`]),
+    ].join(', ');
+  }
   if (e.raw !== undefined) return [...e.raw].slice(0, 40).join('');
   if (e.unknown || e.proxy)
     return 'not read: an object this engine does not model';
@@ -310,6 +378,7 @@ export async function query(input: CommandInput): Promise<string> {
     if (!/^[0-9A-F]{1,16}$/.test(h))
       throw usage('--handle takes a hexadecimal handle, as `query` prints it.');
   const rows: Row[] = [];
+  const spatial = input.values['3d'] === true;
   for (const item of walk(d, owners)) {
     if (item.depth > 0) continue;
     const e = item.e;
@@ -323,7 +392,7 @@ export async function query(input: CommandInput): Promise<string> {
     if (handles.size && !handles.has(e.h)) continue;
     const prims = CURVES.has(e.kind) ? worldPrims(item) : [];
     const length = prims.length
-      ? prims.reduce((s, p) => s + primLength(p), 0)
+      ? prims.reduce((s, p) => s + primLength(p, spatial), 0)
       : null;
     const p = anchor(e);
     if (region) {
@@ -335,15 +404,31 @@ export async function query(input: CommandInput): Promise<string> {
         p[0] <= region.x1 &&
         p[1] >= region.y0 &&
         p[1] <= region.y1;
-      const crosses = prims.some((q) => lengthIn(q, region) > 0);
+      const crosses = prims.some((q) => lengthIn(q, region, true) > 0);
       if (!inside && !crosses) continue;
     }
+    const z =
+      length === null
+        ? {}
+        : elevationFields(
+            elevationOf(
+              prims,
+              spatial ? prims.reduce((s, p) => s + primLength(p), 0) : length,
+            ),
+          );
     rows.push({
       h: e.h,
       kind: e.kind,
       layer: e.layer,
       at: at(p),
-      detail: detail(e, length),
+      detail: detail(
+        d,
+        e,
+        length,
+        z.z_span === undefined
+          ? ''
+          : `, Z span ${round(z.z_span, 3)}${z.z_dominant_entities ? ' (Z-dominant)' : ''}`,
+      ),
     });
   }
   for (const h of handles)
@@ -355,13 +440,17 @@ export async function query(input: CommandInput): Promise<string> {
   const full = input.values.full === true;
   const limit = positiveInt(input.values, 'limit', 20);
   const shown = full ? rows : rows.slice(0, limit);
-  const saved = save(input.io, str(input.values, 'save'), { entities: rows });
+  const length_mode = lengthMode(spatial);
+  const saved = save(input.io, str(input.values, 'save'), {
+    length_mode,
+    entities: rows,
+  });
   return listOutput({
     key: 'entities',
     summary: rows.length
       ? `${shown.length} of ${rows.length} entities`
       : '0 entities match',
-    head: { space, ...(saved ? { saved } : {}) },
+    head: { space, length_mode, ...(saved ? { saved } : {}) },
     rows: shown,
     columns: ['h', 'kind', 'layer', 'at', 'detail'],
     help: rows.length

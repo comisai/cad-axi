@@ -59,6 +59,7 @@ export interface Block {
   path_present: boolean;
   xref_file?: string;
   xref_folder?: string;
+  units?: number;
   attributes: string[];
   entities: number;
 }
@@ -138,6 +139,9 @@ export interface Entity {
   attribs?: Attrib[];
   text?: string;
   measurement?: number;
+  measurement_kind?: 'length' | 'angle';
+  dimension_factor?: number;
+  dimension_suffix?: string;
   pattern?: string;
   solid?: boolean;
   loops?: P2[][];

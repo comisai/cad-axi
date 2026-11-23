@@ -6,7 +6,12 @@ import type { Drawing } from '../model/drawing.ts';
 import { collectTexts } from '../model/texts.ts';
 import { metres, needMetres, unitsOf } from '../model/units.ts';
 import { listOutput, type Row } from '../output/views.ts';
-import { type Piece, piecesOf } from '../takeoff/lengths.ts';
+import {
+  elevationFields,
+  lengthMode,
+  type Piece,
+  piecesOf,
+} from '../takeoff/lengths.ts';
 import { findRuns, type Run } from '../takeoff/runs.ts';
 import { sizeLabels, sizeRuns } from '../takeoff/sizes.ts';
 import {
@@ -85,30 +90,32 @@ function runsOf(
   gap: number,
 ) {
   const region = regionOf(input.values);
+  const spatial = input.values['3d'] === true;
   const layerSet = new Set(groups.flatMap((g) => [...g.layers]));
-  const { pieces, hidden } = piecesOf(d, owners, region, {
+  const { pieces, hidden, elevation } = piecesOf(d, owners, region, {
     all,
     layers: layerSet,
+    spatial,
+    includeOtherLayers: true,
   });
+  const byLayer = new Map<string, Piece[]>();
+  for (const piece of pieces) {
+    if (piece.length <= 0) continue;
+    const list = byLayer.get(piece.item.layer);
+    if (list) list.push(piece);
+    else byLayer.set(piece.item.layer, [piece]);
+  }
   const byGroup = groups.map((g) => ({
     name: g.name,
-    pieces: pieces.filter((p) => g.layers.has(p.item.layer)),
+    pieces: pieces.filter((p) => p.length > 0 && g.layers.has(p.item.layer)),
   }));
   // Runs on every other visible layer compete for the labels too, so a label
   // as close to another layer's run sizes neither, whichever layers were
   // asked for. They are never reported.
-  const others = new Map<string, Piece[]>();
-  for (const p of piecesOf(d, owners, region, { all }).pieces) {
-    if (layerSet.has(p.item.layer)) continue;
-    const list = others.get(p.item.layer) ?? [];
-    list.push(p);
-    others.set(p.item.layer, list);
-  }
-  const rivals = [...others].map(([name, list]) => ({
-    name: `${RIVAL}${name}`,
-    pieces: list,
-  }));
-  const found = findRuns([...byGroup, ...rivals], gap);
+  const rivals = [...byLayer]
+    .filter(([name]) => !layerSet.has(name))
+    .map(([name, list]) => ({ name: `${RIVAL}${name}`, pieces: list }));
+  const found = findRuns([...byGroup, ...rivals], gap, spatial);
   const reach = positiveNumber(input.values, 'reach', 3, 100);
   const labels = sizeLabels(
     collectTexts(d, owners)
@@ -134,7 +141,7 @@ function runsOf(
     placed: sized.placement.placed - elsewhere,
     elsewhere,
   };
-  return { runs, placement, hidden, reach, region };
+  return { runs, placement, hidden, elevation, reach };
 }
 
 /** Marks the group of a layer that was not asked for: it only competes. */
@@ -154,6 +161,8 @@ export async function measure(input: CommandInput): Promise<string> {
   const full = input.values.full === true;
   const limit = positiveInt(input.values, 'limit', 20);
   const unitNote = `metres, from ${units.name} (${units.basis === 'file' ? 'stated by the file' : 'given'})`;
+  const spatial = input.values['3d'] === true;
+  const length_mode = lengthMode(spatial);
 
   if (by === 'size') {
     const r = runsOf(
@@ -202,7 +211,11 @@ export async function measure(input: CommandInput): Promise<string> {
               : 1),
       );
     const shown = full ? out : out.slice(0, limit);
-    const saved = save(input.io, str(input.values, 'save'), { sizes: out });
+    const geometry = { length_mode, ...elevationFields(r.elevation) };
+    const saved = save(input.io, str(input.values, 'save'), {
+      ...geometry,
+      sizes: out,
+    });
     return listOutput({
       key: 'sizes',
       summary: out.length
@@ -211,6 +224,7 @@ export async function measure(input: CommandInput): Promise<string> {
       head: {
         space,
         lengths: unitNote,
+        ...geometry,
         reach: `${r.reach} text heights`,
         labels: `${r.placement.placed} sized these runs, ${r.placement.shared.length} sat as close to runs of two layers and sized neither, ${r.placement.elsewhere} belong to runs of other layers, ${r.placement.missed.length} with no run in reach`,
         ...(r.hidden.entities
@@ -234,8 +248,9 @@ export async function measure(input: CommandInput): Promise<string> {
   const layerSet = groups
     ? new Set(groups.flatMap((g) => [...g.layers]))
     : undefined;
-  const { pieces, hidden } = piecesOf(d, owners, region, {
+  const { pieces, hidden, elevation } = piecesOf(d, owners, region, {
     all,
+    spatial,
     ...(layerSet ? { layers: layerSet } : {}),
   });
   const keyOf = (p: Piece): string[] => {
@@ -299,7 +314,11 @@ export async function measure(input: CommandInput): Promise<string> {
     [...rows.values()].reduce((s, r) => s + r.length, 0) * factor,
   );
   const shown = full ? out : out.slice(0, limit);
-  const saved = save(input.io, str(input.values, 'save'), { groups: out });
+  const geometry = { length_mode, ...elevationFields(elevation) };
+  const saved = save(input.io, str(input.values, 'save'), {
+    ...geometry,
+    groups: out,
+  });
   return listOutput({
     key: 'groups',
     summary: out.length
@@ -308,6 +327,7 @@ export async function measure(input: CommandInput): Promise<string> {
     head: {
       space,
       lengths: unitNote,
+      ...geometry,
       ...(region ? { region: str(input.values, 'region') } : {}),
       ...(hidden.entities
         ? {
@@ -368,7 +388,12 @@ export async function runs(input: CommandInput): Promise<string> {
       : {}),
   }));
   const sized = kept.filter((x) => x.size).length;
+  const geometry = {
+    length_mode: lengthMode(input.values['3d'] === true),
+    ...elevationFields(r.elevation),
+  };
   const saved = save(input.io, str(input.values, 'save'), {
+    ...geometry,
     runs: kept.map((run) => ({
       run: run.id,
       group: run.group,
@@ -388,6 +413,7 @@ export async function runs(input: CommandInput): Promise<string> {
     head: {
       space,
       lengths: `metres, from ${units.name}`,
+      ...geometry,
       gap: `${round(gap, 6)} drawing units`,
       reach: `${r.reach} text heights`,
       ...(r.hidden.entities
