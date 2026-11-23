@@ -10,7 +10,7 @@ cad-axi info plan.dwg
 
 Read `declared_units` first. When it says `not stated`, compare a dimension's drawn length with its text and check the reference scales in `unit_evidence`. A reference scaled by 100 implies centimetres in the host if the reference is drawn in metres. Confirm the unit when the evidence is inconclusive or conflicts, then pass it with `--units`.
 
-`cad-axi query <file> --space all --type DIMENSION --type VIEWPORT --type INSERT` shows the underlying entities and handles. Read `vertical_products` and `opaque` to check whether the owner needs to send an "Export to AutoCAD" copy for objects the tool cannot read.
+`cad-axi query <file> --space all --type DIMENSION --type VIEWPORT --type INSERT` shows the underlying entities and handles. INSERT rows show the block name and X, Y and Z scale in `detail`. Use `--full` for separate fields or `--save` for each scale as an array of three numbers. Read `vertical_products` and `opaque` to check whether the owner needs to send an "Export to AutoCAD" copy for objects the tool cannot read.
 
 Read `xrefs` for each external reference's block name, filename and folder relative to the host drawing. A folder of `.` means the host folder. Use `--full` for the complete list within the output limit.
 
@@ -58,6 +58,16 @@ cad-axi query plan.dwg --block HEAD --limit 3
 
 Text is shown decoded, with MTEXT codes removed. Use `--full` to see the raw text alongside the `keyboard` or `dos-hebrew` decoding rule when one applies.
 
+## Count several blocks in one read
+
+```sh
+cad-axi query plan.dwg --count --block HEAD --block PIPEBLK --region -1000,-8000,45000,45000 --region 45000,-8000,65000,45000 --save counts.json
+```
+
+Read `block_counts` for one row per named block in each region, including zero counts. Without regions, the counts cover the selected space. Each count is the number of INSERT entities directly in that space, with the insert point on or inside the box. An insert in overlapping regions contributes to each region. An array insert is one entity.
+
+Omit `--count` to extract the matching insert rows. Each matching entity appears once across all the regions. Use `--save` to keep the complete result while `--limit` controls what prints.
+
 ## Look at it
 
 ```sh
@@ -66,7 +76,7 @@ cad-axi render plan.dwg --out plan.svg --layer SAN --layer RAIN
 
 ## Mark up a drawing without touching it: the overlay
 
-Write the markup as a new drawing in the source's units, layers and coordinates. The owner inserts it over their own drawing.
+Write the markup as a new drawing in the source's units, layers and coordinates. The owner inserts it over their own drawing. The `layers` result reports how many layers the new file actually contains, including layer `0`.
 
 ```sh
 cad-axi create --spec markup.json --like plan.dwg --out markup.dwg

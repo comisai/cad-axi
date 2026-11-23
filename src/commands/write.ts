@@ -315,7 +315,7 @@ export async function create(input: CommandInput): Promise<string> {
         bytes,
         sha256,
         entities: result.entities,
-        layers: full.layers.length,
+        layers: written.layers.length,
         like: source
           ? 'units, layers, linetypes and text styles copied from the --like drawing: the new drawing lies in its coordinates'
           : null,

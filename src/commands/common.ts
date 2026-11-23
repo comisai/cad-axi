@@ -117,6 +117,8 @@ export function parseBox(text: string, flag: string): Box {
   )
     throw usage(`--${flag} takes four numbers, x0,y0,x1,y1, in drawing units.`);
   const [a, b, c, d] = parts.map(Number) as [number, number, number, number];
+  if (![a, b, c, d].every(Number.isFinite))
+    throw usage(`--${flag} takes four finite numbers, x0,y0,x1,y1.`);
   if (a === c || b === d) throw usage(`--${flag} must enclose some area.`);
   return {
     x0: Math.min(a, c),

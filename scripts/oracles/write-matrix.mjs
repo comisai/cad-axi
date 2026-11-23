@@ -12,6 +12,8 @@ import { spawnSync } from 'node:child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { decode } from '@toon-format/toon';
+import { blockQueryDxf, overlaySpec } from '../../test/fixtures/block-query.ts';
 
 const { values: v } = parseArgs({
   options: {
@@ -162,6 +164,7 @@ const ezdxfKinds = (file) => {
       status: r.status,
       kinds: doc.all_kinds ?? doc.kinds,
       audit: doc.audit_errors,
+      layers: doc.layers,
     };
   } catch {
     return { status: r.status, kinds: {}, err: r.stderr.slice(-200) };
@@ -208,6 +211,27 @@ for (const as of ['2018', '2013', '2010', '2004', '2000']) {
     }
   }
 }
+
+writeFileSync(join(work, 'xref-host.dxf'), blockQueryDxf());
+writeFileSync(join(work, 'overlay.json'), JSON.stringify(overlaySpec));
+const overlay = cli(
+  'create',
+  '--like',
+  'xref-host.dxf',
+  '--spec',
+  'overlay.json',
+  '--out',
+  'overlay.dxf',
+);
+const layerNames = ezdxfKinds('overlay.dxf').layers;
+const reportedLayers =
+  overlay.status === 0 ? decode(overlay.stdout).layers : null;
+gate(
+  'create --like: the reported layer count agrees with ezdxf',
+  reportedLayers === layerNames?.length &&
+    ['0', 'SYMBOLS', 'MARK'].every((name) => layerNames.includes(name)),
+  { write: overlay.status, reportedLayers, layerNames },
+);
 
 writeFileSync(
   resolve(v.report),

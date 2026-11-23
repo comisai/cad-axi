@@ -3,6 +3,7 @@
 import type { CommandInput } from '../cli/table.ts';
 import { usage } from '../errors.ts';
 import type { Drawing } from '../model/drawing.ts';
+import type { Box } from '../model/geometry.ts';
 import { collectTexts } from '../model/texts.ts';
 import { metres, needMetres, unitsOf } from '../model/units.ts';
 import { listOutput, type Row } from '../output/views.ts';
@@ -34,13 +35,9 @@ interface Group {
   layers: Set<string>;
 }
 
-/** `--group name=LAYER+LAYER`, or one group per `--layer`. */
-function groupsOf(
-  input: CommandInput,
-  d: Drawing,
-  required: boolean,
-): Group[] | null {
-  const groups: Group[] = [];
+/** Validate the group syntax before looking up layer names in the drawing. */
+function groupFlags(input: CommandInput, required: boolean) {
+  const named = new Map<string, string>();
   for (const g of list(input.values, 'group')) {
     const eq = g.indexOf('=');
     if (eq < 1 || eq === g.length - 1)
@@ -52,20 +49,31 @@ function groupsOf(
       throw usage(
         'A group name is letters, digits, spaces, dots, dashes and underscores, up to 40.',
       );
-    if (groups.some((x) => x.name === name))
-      throw usage('Two groups have the same name.');
-    groups.push({ name, layers: new Set(pickLayers(d, g.slice(eq + 1))) });
+    if (named.has(name)) throw usage('Two groups have the same name.');
+    const layers = g.slice(eq + 1);
+    if (!layers.trim()) throw usage('A layer name is missing.');
+    named.set(name, layers);
   }
-  for (const l of list(input.values, 'layer')) {
-    const name = pickLayer(d, l);
-    if (!groups.some((g) => g.name === name))
-      groups.push({ name, layers: new Set([name]) });
-  }
-  if (!groups.length && required)
+  const layers = list(input.values, 'layer');
+  if (layers.some((layer) => !layer.trim()))
+    throw usage('A layer name is missing.');
+  if (!named.size && !layers.length && required)
     throw usage(
       'Name the pipes to follow with --layer <layer> or --group name=LAYER+LAYER.',
     );
-  return groups.length ? groups : null;
+  return { named, layers };
+}
+
+/** `--group name=LAYER+LAYER`, or one group per `--layer`. */
+function groupsOf(d: Drawing, flags: ReturnType<typeof groupFlags>): Group[] {
+  const groups = new Map<string, Set<string>>();
+  for (const [name, layers] of flags.named)
+    groups.set(name, new Set(pickLayers(d, layers)));
+  for (const l of flags.layers) {
+    const name = pickLayer(d, l);
+    if (!groups.has(name)) groups.set(name, new Set([name]));
+  }
+  return [...groups].map(([name, layers]) => ({ name, layers }));
 }
 
 function fileArg(input: CommandInput): string {
@@ -74,23 +82,31 @@ function fileArg(input: CommandInput): string {
   return file;
 }
 
-/** The gap two ends may leave and still join: 10 mm by default, in drawing units. */
-function gapOf(input: CommandInput, unitMetres: number | null): number {
-  const given = str(input.values, 'gap');
-  if (given !== undefined) return positiveNumber(input.values, 'gap', 1, 1e9);
-  return unitMetres === null ? 0.001 : 0.01 / unitMetres;
+function measureFlags(input: CommandInput) {
+  const units = str(input.values, 'units');
+  return {
+    units: units === undefined ? undefined : unitsOf(0, units),
+    region: regionOf(input.values),
+    limit: positiveInt(input.values, 'limit', 20),
+    // The default gap is 10 mm, converted to drawing units after reading them.
+    gap: positiveNumber(input.values, 'gap', 0, 1e9),
+    reach: positiveNumber(input.values, 'reach', 3, 100),
+  };
 }
 
 function runsOf(
-  input: CommandInput,
   d: Drawing,
   owners: readonly string[],
   groups: Group[],
-  all: boolean,
-  gap: number,
+  options: {
+    all: boolean;
+    spatial: boolean;
+    gap: number;
+    reach: number;
+    region: Box | null;
+  },
 ) {
-  const region = regionOf(input.values);
-  const spatial = input.values['3d'] === true;
+  const { all, spatial, gap, reach, region } = options;
   const layerSet = new Set(groups.flatMap((g) => [...g.layers]));
   const { pieces, hidden, elevation } = piecesOf(d, owners, region, {
     all,
@@ -116,7 +132,6 @@ function runsOf(
     .filter(([name]) => !layerSet.has(name))
     .map(([name, list]) => ({ name: `${RIVAL}${name}`, pieces: list }));
   const found = findRuns([...byGroup, ...rivals], gap, spatial);
-  const reach = positiveNumber(input.values, 'reach', 3, 100);
   const labels = sizeLabels(
     collectTexts(d, owners)
       .filter((t) => !t.hidden || all)
@@ -141,38 +156,38 @@ function runsOf(
     placed: sized.placement.placed - elsewhere,
     elsewhere,
   };
-  return { runs, placement, hidden, elevation, reach };
+  return { runs, placement, hidden, elevation };
 }
 
 /** Marks the group of a layer that was not asked for: it only competes. */
 const RIVAL = '\u0000';
 
 export async function measure(input: CommandInput): Promise<string> {
-  const { drawing: d } = await load(input, fileArg(input), true);
-  const units = unitsOf(d.header.insunits, str(input.values, 'units'));
-  const factor = needMetres(units);
-  const { owners, name: space } = spaceOf(d, input.values);
-  const region = regionOf(input.values);
-  const all = input.values.all === true;
   const by = str(input.values, 'by') ?? 'layer';
   if (!['layer', 'linetype', 'color', 'size'].includes(by))
     throw usage('--by takes layer, linetype, color or size.');
-  const groups = groupsOf(input, d, by === 'size');
+  const flags = measureFlags(input);
+  const groupSelection = groupFlags(input, by === 'size');
+  const { drawing: d } = await load(input, fileArg(input), true);
+  const units = flags.units ?? unitsOf(d.header.insunits, undefined);
+  const factor = needMetres(units);
+  const { owners, name: space } = spaceOf(d, input.values);
+  const { region, limit, reach } = flags;
+  const all = input.values.all === true;
+  const groups = groupsOf(d, groupSelection);
   const full = input.values.full === true;
-  const limit = positiveInt(input.values, 'limit', 20);
   const unitNote = `metres, from ${units.name} (${units.basis === 'file' ? 'stated by the file' : 'given'})`;
   const spatial = input.values['3d'] === true;
   const length_mode = lengthMode(spatial);
 
   if (by === 'size') {
-    const r = runsOf(
-      input,
-      d,
-      owners,
-      groups as Group[],
+    const r = runsOf(d, owners, groups, {
       all,
-      gapOf(input, factor),
-    );
+      spatial,
+      gap: flags.gap || 0.01 / factor,
+      reach,
+      region,
+    });
     const rows = new Map<
       string,
       {
@@ -225,7 +240,7 @@ export async function measure(input: CommandInput): Promise<string> {
         space,
         lengths: unitNote,
         ...geometry,
-        reach: `${r.reach} text heights`,
+        reach: `${reach} text heights`,
         labels: `${r.placement.placed} sized these runs, ${r.placement.shared.length} sat as close to runs of two layers and sized neither, ${r.placement.elsewhere} belong to runs of other layers, ${r.placement.missed.length} with no run in reach`,
         ...(r.hidden.entities
           ? {
@@ -245,7 +260,7 @@ export async function measure(input: CommandInput): Promise<string> {
     });
   }
 
-  const layerSet = groups
+  const layerSet = groups.length
     ? new Set(groups.flatMap((g) => [...g.layers]))
     : undefined;
   const { pieces, hidden, elevation } = piecesOf(d, owners, region, {
@@ -254,7 +269,7 @@ export async function measure(input: CommandInput): Promise<string> {
     ...(layerSet ? { layers: layerSet } : {}),
   });
   const keyOf = (p: Piece): string[] => {
-    if (groups)
+    if (groups.length)
       return groups
         .filter((g) => g.layers.has(p.item.layer))
         .map((g) => g.name);
@@ -287,16 +302,15 @@ export async function measure(input: CommandInput): Promise<string> {
       if (p.approximated) row.approximated = true;
       rows.set(key, row);
     }
-  if (groups)
-    for (const g of groups)
-      if (!rows.has(g.name))
-        rows.set(g.name, {
-          group: g.name,
-          length: 0,
-          entities: 0,
-          in_blocks: 0,
-          approximated: false,
-        });
+  for (const g of groups)
+    if (!rows.has(g.name))
+      rows.set(g.name, {
+        group: g.name,
+        length: 0,
+        entities: 0,
+        in_blocks: 0,
+        approximated: false,
+      });
   const out: Row[] = [...rows.values()]
     .sort((a, b) => b.length - a.length || a.group.localeCompare(b.group))
     .map((r) => ({
@@ -322,7 +336,7 @@ export async function measure(input: CommandInput): Promise<string> {
   return listOutput({
     key: 'groups',
     summary: out.length
-      ? `${shown.length} of ${out.length} ${groups ? 'groups' : `${by}s`}, ${total} m in all`
+      ? `${shown.length} of ${out.length} ${groups.length ? 'groups' : `${by}s`}, ${total} m in all`
       : '0 lines, arcs or polylines in that space',
     head: {
       space,
@@ -353,23 +367,23 @@ export async function measure(input: CommandInput): Promise<string> {
 }
 
 export async function runs(input: CommandInput): Promise<string> {
+  const flags = measureFlags(input);
+  const groupSelection = groupFlags(input, true);
+  const min = positiveNumber(input.values, 'min', 0, 1e9);
   const { drawing: d } = await load(input, fileArg(input), true);
-  const units = unitsOf(d.header.insunits, str(input.values, 'units'));
+  const units = flags.units ?? unitsOf(d.header.insunits, undefined);
   const factor = needMetres(units);
   const { owners, name: space } = spaceOf(d, input.values);
-  const groups = groupsOf(input, d, true) as Group[];
+  const groups = groupsOf(d, groupSelection);
   const all = input.values.all === true;
-  const gap = gapOf(input, factor);
-  const r = runsOf(input, d, owners, groups, all, gap);
-  const min =
-    str(input.values, 'min') === undefined
-      ? 0
-      : positiveNumber(input.values, 'min', 1, 1e9);
+  const spatial = input.values['3d'] === true;
+  const { region, limit, reach } = flags;
+  const gap = flags.gap || 0.01 / factor;
+  const r = runsOf(d, owners, groups, { all, spatial, gap, reach, region });
   const kept = r.runs
     .filter((x) => x.length >= min)
     .sort((a, b) => b.length - a.length);
   const full = input.values.full === true;
-  const limit = positiveInt(input.values, 'limit', 20);
   const shown = full ? kept : kept.slice(0, limit);
   const ends = (run: Run) =>
     run.ends ? `${at(run.ends[0])} to ${at(run.ends[1])}` : 'closed loop';
@@ -389,7 +403,7 @@ export async function runs(input: CommandInput): Promise<string> {
   }));
   const sized = kept.filter((x) => x.size).length;
   const geometry = {
-    length_mode: lengthMode(input.values['3d'] === true),
+    length_mode: lengthMode(spatial),
     ...elevationFields(r.elevation),
   };
   const saved = save(input.io, str(input.values, 'save'), {
@@ -415,7 +429,7 @@ export async function runs(input: CommandInput): Promise<string> {
       lengths: `metres, from ${units.name}`,
       ...geometry,
       gap: `${round(gap, 6)} drawing units`,
-      reach: `${r.reach} text heights`,
+      reach: `${reach} text heights`,
       ...(r.hidden.entities
         ? {
             left_out: `${r.hidden.entities} entities on layers that are off or frozen; --all includes them`,

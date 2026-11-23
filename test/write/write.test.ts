@@ -14,6 +14,7 @@ import {
 } from 'node:fs';
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
+import { blockQueryDxf, overlaySpec } from '../fixtures/block-query.ts';
 import { ANSWERS } from '../fixtures/sample.ts';
 import { body, fixtureFolder, m, rowsOf, runBinary } from '../helpers.ts';
 
@@ -219,6 +220,28 @@ describe('create', () => {
     const layers = rowsOf(await ok('layers', 'overlay.dwg'), 'layers');
     assert.equal(layers.find((l) => l.name === 'RAIN')?.color, 5);
     assert.equal(layers.find((l) => l.name === 'SAN')?.length, 1);
+  });
+
+  it('reports the layers written when creating an overlay of a drawing with an xref', async () => {
+    writeFileSync(join(dir, 'symbols.dxf'), blockQueryDxf());
+    writeFileSync(join(dir, 'symbols-mark.json'), JSON.stringify(overlaySpec));
+    for (const format of ['dwg', 'dxf']) {
+      const out = `symbols-overlay.${format}`;
+      const result = await ok(
+        'create',
+        '--like',
+        'symbols.dxf',
+        '--spec',
+        'symbols-mark.json',
+        '--out',
+        out,
+      );
+      const layers = rowsOf(await ok('layers', out, '--full'), 'layers');
+      assert.ok(layers.some((layer) => layer.name === '0'));
+      assert.ok(layers.some((layer) => layer.name === 'SYMBOLS'));
+      assert.ok(layers.some((layer) => layer.name === 'MARK'));
+      assert.equal(result.layers, layers.length);
+    }
   });
 });
 

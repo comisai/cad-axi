@@ -165,13 +165,22 @@ export const COMMANDS: readonly CommandSpec[] = [
         value: '<name>',
         summary: 'Inserts of this block',
       },
+      count: {
+        type: 'boolean',
+        summary:
+          'Count inserts per named block and region, including zero counts',
+      },
       handle: {
         type: 'string',
         multiple: true,
         value: '<h>',
         summary: 'One entity by its handle',
       },
-      region: REGION_FLAG,
+      region: {
+        ...REGION_FLAG,
+        multiple: true,
+        summary: 'A box in drawing units. Repeat for several regions',
+      },
       '3d': THREE_D,
       space: {
         ...SPACE_FLAG,
@@ -183,7 +192,7 @@ export const COMMANDS: readonly CommandSpec[] = [
       ...READ,
     },
     summary:
-      'Entities by kind, layer, block, region or handle: the handles an edit names',
+      'Entities by kind, layer, block, region or handle, or counts of named blocks',
     run: query,
   },
   {
