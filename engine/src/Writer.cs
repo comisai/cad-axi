@@ -77,7 +77,7 @@ internal static class Writer
     {
         if (o.Ops is null || o.Out is null) throw new EngineError("usage");
         var clock = Stopwatch.StartNew();
-        var doc = Reader.Open(o, out _, out _, out _, out _);
+        var doc = Reader.Open(o, out var kind, out _, out _, out _);
         using var ops = Parse(o.Ops);
         var added = new List<(int Index, string Handle)>();
         var index = 0;
@@ -88,9 +88,19 @@ internal static class Writer
             index++;
         }
         if (o.As is not null) doc.Header.Version = Version(o.As);
-        // A file from another program may lack default objects a writer
-        // needs, such as the Standard multiline style; they are added.
-        doc.UpdateCollections(true, true);
+        if (kind == "dxf" && Reader.HasSynthesizedDxfRoot(doc, o.File!))
+        {
+            // Complete the default tables and give DWG the empty paper block
+            // it needs. Creating a paper layout would also add a viewport.
+            if (!doc.BlockRecords.Contains(BlockRecord.PaperSpaceName))
+                doc.BlockRecords.Add(new BlockRecord(BlockRecord.PaperSpaceName));
+            doc.CreateDefaults();
+        }
+        else
+        {
+            // The writers need default objects such as the Standard multiline style.
+            doc.UpdateCollections(true, true);
+        }
         Save(rec, doc, o.Out, clock, added);
         return 0;
     }

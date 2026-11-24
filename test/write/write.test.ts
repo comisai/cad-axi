@@ -15,6 +15,12 @@ import {
 import { join } from 'node:path';
 import { before, describe, it } from 'node:test';
 import { blockQueryDxf, overlaySpec } from '../fixtures/block-query.ts';
+import {
+  dxfWithEmptyDictionary,
+  minimalEditDxf,
+  resizeLineOps,
+  structuredEditDxf,
+} from '../fixtures/edit-guard.ts';
 import { ANSWERS } from '../fixtures/sample.ts';
 import { body, fixtureFolder, m, rowsOf, runBinary } from '../helpers.ts';
 
@@ -335,6 +341,85 @@ describe('convert', () => {
 });
 
 describe('edit', () => {
+  const resizeLine = async (file: string) => {
+    const lines = rowsOf(await ok('query', file, '--type', 'LINE'), 'entities');
+    assert.equal(lines.length, 1);
+    assert.equal(lines[0]?.detail, 'length 250');
+    const handle = lines[0]?.h;
+    assert.ok(typeof handle === 'string');
+    const ops = `${file}.json`;
+    writeFileSync(join(dir, ops), JSON.stringify(resizeLineOps(handle)));
+    return ops;
+  };
+
+  for (const [kind, fixture] of [
+    ['minimal', () => minimalEditDxf(250)],
+    ['structured', structuredEditDxf],
+  ] as const) {
+    for (const format of ['dxf', 'dwg']) {
+      it(`edits a ${kind} R2000 DXF as ${format.toUpperCase()}`, async () => {
+        const file = `${kind}-${format}.dxf`;
+        const source = Buffer.from(fixture());
+        writeFileSync(join(dir, file), source);
+        const ops = await resizeLine(file);
+        const out = `${kind}-edited.${format}`;
+        const result = await ok('edit', file, '--ops', ops, '--out', out);
+        assert.equal(result.entities_deleted, 1);
+        assert.equal(result.entities_added, 1);
+        assert.equal(result.entities_kept, kind === 'structured' ? 2 : 0);
+        assert.equal((await ok('info', out)).units, 'mm');
+        const lines = rowsOf(
+          await ok('query', out, '--type', 'LINE'),
+          'entities',
+        );
+        assert.equal(lines.length, 1);
+        assert.equal(lines[0]?.detail, 'length 300');
+        assert.deepEqual(readFileSync(join(dir, file)), source);
+
+        if (kind === 'minimal') {
+          // Model space remains editable even without a LAYOUT object.
+          writeFileSync(
+            join(dir, ops),
+            JSON.stringify({
+              ops: [
+                { op: 'move', h: lines[0]?.h, by: [0, 10] },
+                { op: 'add_line', from: [0, 0], to: [100, 0] },
+              ],
+            }),
+          );
+          const editedAgain = await ok(
+            'edit',
+            out,
+            '--ops',
+            ops,
+            '--out',
+            `minimal-again.${format}`,
+          );
+          assert.equal(editedAgain.entities_changed, 1);
+          assert.equal(editedAgain.entities_added, 1);
+        }
+      });
+    }
+  }
+
+  it('discards a DXF edit that drops an authored dictionary', async () => {
+    const file = 'with-dictionary.dxf';
+    writeFileSync(join(dir, file), dxfWithEmptyDictionary());
+    const ops = await resizeLine(file);
+    const out = 'without-dictionary.dxf';
+    const doc = await fails(
+      'verify_failed',
+      'edit',
+      file,
+      '--ops',
+      ops,
+      '--out',
+      out,
+    );
+    assert.equal(doc.census, 1);
+    assert.equal(existsSync(join(dir, out)), false);
+  });
+
   it('applies every operation, keeps everything else, and says so', async () => {
     const q = (args: string[]) =>
       ok('query', 'plan.dwg', ...args).then((d) => rowsOf(d, 'entities'));

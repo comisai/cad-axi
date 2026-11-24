@@ -182,7 +182,7 @@ internal static class Reader
                 var flags = b.Flags;
                 w.WriteString("name", b.Name);
                 Json.Point(w, "base", b.BlockEntity?.BasePoint ?? CSMath.XYZ.Zero);
-                w.WriteBoolean("layout", b.Layout is not null);
+                w.WriteBoolean("layout", IsLayoutBlock(b));
                 w.WriteBoolean("anonymous", b.IsAnonymous);
                 var external = IsExternal(b);
                 w.WriteBoolean("external", external);
@@ -227,7 +227,7 @@ internal static class Reader
         {
             foreach (var block in doc.BlockRecords)
             {
-                if (!entities && block.Layout is null) continue;
+                if (!entities && !IsLayoutBlock(block)) continue;
                 foreach (var e in block.Entities)
                     if (entities || e is Dimension or Viewport ||
                         (e is Insert i && i.Block is { } reference && IsExternal(reference)))
@@ -253,7 +253,8 @@ internal static class Reader
 
         var objects = new SortedDictionary<string, (long Count, bool Unknown)>(StringComparer.Ordinal);
         var seen = new HashSet<ulong>();
-        Walk(doc.RootDictionary, objects, seen, 0);
+        if (kind != "dxf" || !HasSynthesizedDxfRoot(doc, file))
+            Walk(doc.RootDictionary, objects, seen, 0);
         foreach (var (name, (count, unknown)) in objects)
         {
             if (unknown) census.UnknownObjects += count;
@@ -267,8 +268,33 @@ internal static class Reader
         return census;
     }
 
+    // ACadSharp creates a named ROOT with default dictionaries when it could
+    // not read a root from DXF. Only treat it as synthetic when the text DXF
+    // actually omits OBJECTS, since a malformed section can also trigger it.
+    public static bool HasSynthesizedDxfRoot(CadDocument doc, string file)
+    {
+        if (doc.RootDictionary?.Name != CadDictionary.Root || DxfReader.IsBinary(file)) return false;
+
+        using var reader = File.OpenText(file);
+        while (reader.ReadLine() is { } group && reader.ReadLine() is { } value)
+        {
+            if (!int.TryParse(group, out var code)) return false;
+            if (code != 0) continue;
+            if (value.Trim() == "EOF") return true;
+            if (value.Trim() != "SECTION") continue;
+            if (!int.TryParse(reader.ReadLine(), out var sectionCode) || sectionCode != 2 ||
+                reader.ReadLine()?.Trim() is not { } section)
+                return false;
+            if (section == "OBJECTS") return false;
+        }
+        return false;
+    }
+
     private static bool IsExternal(BlockRecord block) =>
         (block.Flags & (BlockTypeFlags.XRef | BlockTypeFlags.XRefOverlay)) != 0;
+
+    private static bool IsLayoutBlock(BlockRecord block) =>
+        block.Layout is not null || block.Name.Equals(BlockRecord.ModelSpaceName, StringComparison.OrdinalIgnoreCase);
 
     // Compare paths lexically. The referenced drawing may be missing, and
     // reading its metadata must never open or resolve any referenced file.
