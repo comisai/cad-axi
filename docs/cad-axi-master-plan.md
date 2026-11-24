@@ -2,7 +2,7 @@
 
 | | |
 | --- | --- |
-| Status | Version 0.1.0 released to npm with signed provenance (2026-11-22): reading, measuring, creating and editing, with every write checked ([write matrix](write-matrix.md)). The Comis apps pack ships it since comisai/comis#4702 (merged 2026-11-22, decision D-new-159). Version 0.1.1 fixed a guessed size the first keyed Comis run found; the second run passed every case (comisai/comis#4718). The live gates wait for A2, the AUDIT check for A5. |
+| Status | Version 0.1.0 released to npm with signed provenance (2026-11-22): reading, measuring, creating and editing, with every write checked ([write matrix](write-matrix.md)). The Comis apps pack ships it since comisai/comis#4702 (merged 2026-11-22, decision D-new-159). Version 0.1.1 fixed a guessed size the first keyed Comis run found; the second run passed every case (comisai/comis#4718). Version 0.2.0 adds plan (XY) lengths with a `--3d` option, unit evidence, and faster size matching. It also improves legacy Hebrew text and reference locations, explains missing glibc versions, batches block counts, reports insert scales and verified layer counts, and allows verified edits of minimal DXF drawings. The live gates wait for A2 and the AUDIT check for A5. |
 | Date | 2026-11-22 |
 | Design | [`cad-axi-design.md`](cad-axi-design.md) |
 | Implementation plan | [`cad-axi-implementation-plan.md`](cad-axi-implementation-plan.md) (tasks T1 to T50, test plan, CI) |
