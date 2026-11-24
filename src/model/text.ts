@@ -227,15 +227,21 @@ export function hebrewShx(font: string): boolean {
   );
 }
 
-// Windows-1252's rendering of bytes 0x80–0x9A. The unassigned positions
-// can also appear in a DWG as literal C1 control code points.
+// DOS Hebrew letters can be stored as the Windows rendering of bytes 0x80–0x9A.
+// Unassigned Windows code-page slots survive as C1 controls in Unicode DWG text.
 const DOS_GLYPHS = '€\u0081‚ƒ„…†‡ˆ‰Š‹Œ\u008dŽ\u008f\u0090‘’“”•–—˜™š';
 const DOS_MAP = new Map(
   [...DOS_GLYPHS].map((c, i) => [c, String.fromCharCode(0x05d0 + i)]),
 );
-const DOS_CLUE = /[ŠŒŽ˜š\u0081\u008d\u008f\u0090]/u;
+// Windows-1255 leaves four more of these slots unassigned than Windows-1252.
+for (const byte of [0x8a, 0x8c, 0x8e, 0x9a])
+  DOS_MAP.set(
+    String.fromCharCode(byte),
+    String.fromCharCode(0x05d0 + byte - 0x80),
+  );
+const DOS_CLUE = /[ŠŒŽ˜š\u0081\u008a\u008c-\u0090\u009a]/u;
 
-/** Signs that a stroke label contains DOS bytes shown as Windows-1252. */
+/** Signs that a stroke label contains DOS bytes carried through a Windows code page. */
 export function hasDosGlyphs(text: string, knownStyle = false): boolean {
   if (
     /[א-ת]/u.test(text) ||
