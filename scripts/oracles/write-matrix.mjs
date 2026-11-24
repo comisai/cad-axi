@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // The write matrix with independent readers (design §12, implementation plan
 // T42): the built CLI writes the sample at every version it offers, as DWG
-// and as DXF, through `create` and through `convert`. LibreDWG's dwgread
+// and as DXF, through `create`, `convert` and `edit`. LibreDWG's dwgread
 // reads every DWG and ezdxf every DXF; each must find every entity kind the
 // engine wrote, with the same counts. LibreDWG and ezdxf run in CI only.
 //
@@ -14,6 +14,11 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { decode } from '@toon-format/toon';
 import { blockQueryDxf, overlaySpec } from '../../test/fixtures/block-query.ts';
+import {
+  minimalEditDxf,
+  resizeLineOps,
+  structuredEditDxf,
+} from '../../test/fixtures/edit-guard.ts';
 
 const { values: v } = parseArgs({
   options: {
@@ -209,6 +214,37 @@ for (const as of ['2018', '2013', '2010', '2004', '2000']) {
         row,
       );
     }
+  }
+}
+
+for (const [name, fixture, kinds] of [
+  ['minimal', minimalEditDxf(250), { LINE: 1 }],
+  ['structured', structuredEditDxf(), { LINE: 1, CIRCLE: 1, POINT: 1 }],
+]) {
+  const file = `${name}.dxf`;
+  const ops = `${name}.json`;
+  writeFileSync(join(work, file), fixture);
+  const query = cli('query', file, '--type', 'LINE');
+  const handle = query.status === 0 && decode(query.stdout).entities?.[0]?.h;
+  if (typeof handle !== 'string') {
+    gate(`edit ${name}: the source line has a handle`, false, query.stdout);
+    continue;
+  }
+  writeFileSync(join(work, ops), JSON.stringify(resizeLineOps(handle)));
+  for (const format of ['dwg', 'dxf']) {
+    const out = `edit-${name}.${format}`;
+    const write = cli('edit', file, '--ops', ops, '--out', out);
+    const read =
+      write.status === 0
+        ? format === 'dwg'
+          ? libredwgKinds(out)
+          : ezdxfKinds(out)
+        : { status: write.status, err: write.stdout };
+    gate(
+      `edit ${name} as ${format}: ${format === 'dwg' ? 'LibreDWG' : 'ezdxf'} reads every entity`,
+      read.status === 0 && Object.keys(same(kinds, read.kinds)).length === 0,
+      read,
+    );
   }
 }
 
