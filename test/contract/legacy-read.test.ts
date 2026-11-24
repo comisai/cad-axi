@@ -145,6 +145,45 @@ it('reads legacy stroke-font text in a modern DWG with its size labels intact', 
   );
 });
 
+it('recovers DOS Hebrew preserved through Windows-1255 in a modern DWG', async () => {
+  const dir = tempDir();
+  // Visual-order IBM862 carried through Windows-1255. Bytes 8A, 8C, 8E
+  // and 9A survive as C1 controls when the text is saved as Unicode.
+  const mixed = '€\u009a \u008a…\u009a\u0081 \u008c‹‰\u008e';
+  const controls = '\u009a\u008c\u009a';
+  writeFileSync(
+    join(dir, 'hebrew.dxf'),
+    writeDxf({
+      units: 4,
+      layers: [],
+      styles: [...stroke, { name: 'OUTLINE', font: 'arial.ttf' }],
+      codepage: 'ANSI_1255',
+      model: [
+        ...labels(mixed, controls, 'מיכל בתוך תא'),
+        ...labels(controls).map((label) => ({ ...label, style: 'OUTLINE' })),
+      ],
+    }),
+  );
+  await read(dir, 'convert', 'hebrew.dxf', '--out', 'hebrew.dwg');
+  const rows = rowsOf(
+    await read(dir, 'texts', 'hebrew.dwg', '--full'),
+    'texts',
+  );
+  assert.deepEqual(
+    rows.map(({ raw, text, decoded }) => [raw, text, decoded]),
+    [
+      [
+        String.raw`€\u009a \u008a…\u009a\u0081 \u008c‹‰\u008e`,
+        'מיכל בתוך תא',
+        'dos-hebrew',
+      ],
+      [String.raw`\u009a\u008c\u009a`, 'תלת', 'dos-hebrew'],
+      ['מיכל בתוך תא', 'מיכל בתוך תא', null],
+      [String.raw`\u009a\u008c\u009a`, String.raw`\u009a\u008c\u009a`, null],
+    ],
+  );
+});
+
 it('lists reference filenames and host-relative folders from DXF and DWG', async () => {
   const dir = tempDir();
   writeFileSync(
